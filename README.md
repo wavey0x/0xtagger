@@ -1,21 +1,25 @@
 <h1 align="center">0xtagger</h1>
-<p align="center"><strong>Your tags belong to you.</strong><br>A private address book for wallet tags, stored in your browser or on a server you control.</p>
+<p align="center"><strong>Your tags belong to you.</strong><br>A private, agent-friendly address book for Ethereum addresses, kept in your browser or on a server you control.</p>
 <p align="center"><a href="#get-started">Get started</a> · <a href="INSTALL.md">Setup guide</a> · <a href="LICENSE">MIT</a></p>
 
 ![Adding address tags on Etherscan, revealing the original addresses, and choosing a preferred tag](docs/images/demo.gif)
 
-Tag wallet addresses directly on Etherscan, Safe, and other enabled sites. Carry the same context between them. No account. No analytics.
+Carry your own address labels across Etherscan, Safe, and other enabled sites. No 0xtagger account or analytics.
 
-- **Private by default.** Your book stays in your browser.
-- **Your storage.** Share between devices through a server you run.
-- **Take it with you.** Import and export your tags.
+### What it includes
+
+- **Browser extension and site adapters.** Tag addresses in place. Etherscan and Safe have dedicated adapters; other enabled sites can recognize full addresses. A book stored in the browser works without a server.
+- **Optional self-hosted server.** Keep a separate SQLite book available across devices through an API and a browser address-book view.
+- **CLI.** `0xtagger serve` runs the server; `lookup` and `add` work with a configured server book from the terminal, with JSON output for agents and scripts.
+- **Agent skill.** The [0xtagger skill](skills/0xtagger/SKILL.md) guides evidence-based lookups and additions, including network scope and failure handling. For Codex, copy its folder into `~/.codex/skills/` to use it.
+
+Adopt existing Etherscan and Safe labels as you tag, or import Safe's saved address book after review.
 
 ### Privacy
 
-Your stored book stays under your control. **Websites can read tags displayed on their pages.**
+**Full custody.** You choose where each book lives, can export its records, and can run the server yourself. A browser book stays on your device unless you explicitly copy or import it into a server book. **Websites can read tags displayed on their pages.**
 
-0xtagger reads a website's own stored address book only when you ask it to, from **Import names from
-Safe**, and shows you what it found before anything is saved. Nothing is read while you browse.
+Safe's stored address book is read only when you request an import; you review names before saving.
 
 ### Get started
 
