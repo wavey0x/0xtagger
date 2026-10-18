@@ -37,6 +37,39 @@ def keep_token(token=TOKEN, mode=0o600):
     return path / 'token'
 
 
+@pytest.fixture
+def served():
+    """Serve one crafted snapshot on loopback and return its URL."""
+    import json as _json
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    body = {'records': []}
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            payload = _json.dumps(body).encode()
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, *args):
+            pass
+
+    httpd = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+
+    def serve(snapshot):
+        body.clear()
+        body.update(snapshot)
+        return f'http://127.0.0.1:{httpd.server_address[1]}'
+
+    yield serve
+    httpd.shutdown()
+
+
 def test_a_book_must_be_configured_and_reached_over_https():
     """No default: one person's tailnet hostname is not everyone's book."""
     with pytest.raises(SystemExit) as refused:
@@ -50,6 +83,49 @@ def test_a_book_must_be_configured_and_reached_over_https():
 
     configure(book_url='https://electro.example/0xtagger/')
     assert cli.book_url() == 'https://electro.example/0xtagger'
+
+
+def test_a_pasted_connect_link_is_not_a_book_url():
+    """The extension's link carries the key in its fragment. It must be refused,
+    and the refusal must not repeat what it was handed."""
+    secret = 'test-only-not-a-real-key'
+    for raw in [f'https://electro.example/0xtagger#key={secret}',
+                f'https://name:{secret}@electro.example/0xtagger',
+                f'https://electro.example/0xtagger?key={secret}']:
+        configure(book_url=raw)
+        with pytest.raises(cli.Unconfigured) as refused:
+            cli.book_url()
+        assert secret not in str(refused.value)
+
+    configure(book_url='https:///0xtagger')
+    with pytest.raises(cli.Unconfigured) as refused:
+        cli.book_url()
+    assert 'names no host' in str(refused.value)
+
+
+def test_a_reply_this_program_cannot_read_is_not_a_book(served, capsys):
+    """A record with no name would raise on the way to being printed, so a
+    snapshot we do not understand is an outage, not an address without a tag."""
+    for records in [[{'address': ADDRESS, 'scope': 'global', 'tags': []}],
+                    [{'address': ADDRESS, 'scope': 'global'}],
+                    [{'address': ADDRESS, 'scope': 'global', 'tags': [7]}],
+                    [{'scope': 'global', 'tags': ['Treasury']}],
+                    ['not a record']]:
+        configure(book_url=served({'records': records}))
+        with pytest.raises(cli.Unavailable):
+            cli.records_of(cli.book_url())
+        assert cli.lookup([ADDRESS]) == 2
+        printed = capsys.readouterr()
+        assert 'not a 0xtagger book' in printed.err
+        # Not one word about the address itself.
+        assert printed.out == ''
+
+
+def test_a_snapshot_it_can_read_is_reported(served, capsys):
+    configure(book_url=served({'records': [
+        {'address': ADDRESS, 'scope': 'global', 'tags': ['Treasury']}]}))
+    assert cli.lookup([ADDRESS]) == 0
+    assert 'Treasury' in capsys.readouterr().out
 
 
 def test_the_environment_overrides_the_configured_book(monkeypatch):

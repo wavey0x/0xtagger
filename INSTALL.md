@@ -105,8 +105,8 @@ authenticated GET and writes nothing.
 0xtagger lookup 0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984
 0xtagger lookup --file addresses.txt      # one or more per line, # comments skipped
 0xtagger lookup --find gauge              # search the tags instead
-0xtagger lookup 0x1f98…F984 --chain 1     # prefer this chain's tag
-0xtagger lookup 0x1f98…F984 --json        # machine-readable
+0xtagger lookup 0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984 --chain 1   # prefer this chain's tag
+0xtagger lookup 0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984 --json      # machine-readable
 ```
 
 Install it so it runs from anywhere, then tell it where your book is:

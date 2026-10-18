@@ -96,6 +96,15 @@ def book_url() -> str:
             f"{config_home() / 'config.json'}, or set OXTAGGER_BOOK_URL")
     raw = str(raw).rstrip("/")
     parts = urlsplit(raw)
+    # The extension's connect link carries the book's key in its fragment, so a
+    # pasted link must not become the configured URL — and must not be echoed
+    # back in the refusal either. The server refuses these same shapes.
+    if parts.fragment or parts.username or parts.password or parts.query:
+        raise Unconfigured(
+            "a book URL carries no key, credentials or query. The extension's "
+            "connect link is not the book's address: keep the part before the #")
+    if not parts.hostname:
+        raise Unconfigured("that book URL names no host")
     # Plain HTTP would put the book, and later a write's token, on the wire.
     if parts.scheme == "https" or (parts.scheme == "http" and parts.hostname in LOOPBACK):
         return raw
@@ -146,9 +155,21 @@ def records_of(url: str) -> list:
     except json.JSONDecodeError as error:
         raise Unavailable("the book returned an unreadable reply") from error
     records = body.get("records") if isinstance(body, dict) else None
-    if not isinstance(records, list):
+    if not isinstance(records, list) or not all(map(readable, records)):
+        # Half a snapshot is not a book. Reading one address out of a reply we
+        # do not understand is how an outage starts looking like an answer.
         raise Unavailable("that is not a 0xtagger book")
     return records
+
+
+def readable(record) -> bool:
+    """A record this program can report on: named, scoped, and actually named."""
+    return (isinstance(record, dict)
+            and isinstance(record.get("address"), str)
+            and isinstance(record.get("scope"), str)
+            and isinstance(record.get("tags"), list)
+            and bool(record["tags"])
+            and all(isinstance(tag, str) for tag in record["tags"]))
 
 
 # ---------------------------------------------------------------------------
