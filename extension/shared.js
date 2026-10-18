@@ -98,8 +98,8 @@ const SOURCE_NAMES = {
 };
 export const sourceName = source => SOURCE_NAMES[source] || '';
 
-// Search the same words in the popup and the full book. Presentation and order
-// stay with each view: the book browses alphabetically; the popup is a finder.
+// The full book can search its metadata columns too. The popup searches names
+// and addresses only, so every match is visible in its compact results.
 export function searchEntries(records) {
   return records.map(record => ({
     record,

@@ -457,7 +457,8 @@ test('popup finder searches, copies and adds an address in a chosen scope', asyn
     await lookup.fill(address.slice(0, 12));
     await expect(popup.getByRole('button', { name: 'Add tags' })).toHaveCount(0);
     await lookup.fill(address);
-    await expect(popup.locator('#lookup-result .reveal')).toContainText('…');
+    await expect(popup.locator('#lookup-copy')).toBeVisible();
+    await expect(popup.locator('#lookup-result .lookup-item')).toHaveCount(0);
     await popup.getByRole('combobox', { name: 'Where new tags apply' }).selectOption('eip155:8453');
     await popup.getByRole('button', { name: 'Add tags' }).click();
     await expect(popup.locator('#home')).toBeHidden();
@@ -468,16 +469,16 @@ test('popup finder searches, copies and adds an address in a chosen scope', asyn
     await expect(popup.locator('#lookup-result .lookup-item')).toContainText('Base payroll');
 
     const display = checksumAddress(address);
-    await popup.locator('#lookup-result .reveal').click();
-    await expect(popup.locator('#lookup-result .reveal')).toHaveText(display);
-    await popup.locator('#lookup-result .copy').click();
-    await expect(popup.getByRole('button', { name: `Copied ${display}` })).toBeVisible();
+    await popup.locator('#lookup-copy').click();
+    await expect(popup.getByRole('button', { name: 'Address copied' })).toBeVisible();
     await site.bringToFront();
     expect(await site.evaluate(() => navigator.clipboard.readText())).toBe(display);
     await popup.bringToFront();
 
     await lookup.fill('payroll');
     await expect(popup.locator('.lookup-item')).toHaveCount(1);
+    await popup.locator('.lookup-copy').click();
+    await expect(popup.getByRole('button', { name: `Copied ${display}` })).toBeVisible();
     await lookup.press('ArrowDown');
     await expect(popup.locator('.lookup-item')).toBeFocused();
     await popup.locator('.lookup-item').press('Enter');
@@ -487,16 +488,31 @@ test('popup finder searches, copies and adds an address in a chosen scope', asyn
     const addGlobal = await popup.evaluate(async at => {
       const state = (await chrome.runtime.sendMessage({ type: 'State' })).result.state;
       return chrome.runtime.sendMessage({ type: 'Save', draft: {
-        book: state.activeBook, address: at, scope: 'global', tags: ['Everywhere'], version: null,
+        book: state.activeBook, address: at, scope: 'global', tags: ['Everywhere', 'Universal'], version: null,
       } });
     }, address);
     expect(addGlobal.ok, addGlobal.error).toBe(true);
-    // A scope is its own record with its own editor, so it gets its own row;
-    // a count only ever stands for other names on the row it sits in.
+    // One address is one search hit. Exact lookup shows each network-specific
+    // name in the same group and opens the editor for that scope.
     await expect(popup.locator('#lookup-result .lookup-item')).toHaveCount(2);
     await expect(popup.locator('#lookup-result .lookup-item').first()).toContainText('Everywhere');
+    await expect(popup.locator('#lookup-result .lookup-item').first()).toContainText('Other networks');
     await expect(popup.locator('#lookup-result .lookup-item').nth(1)).toContainText('Base payroll');
-    await expect(popup.locator('#lookup-result .more-count')).toHaveCount(0);
+    await expect(popup.locator('#lookup-result .lookup-item').nth(1)).toContainText('Base only');
+    await expect(popup.locator('#lookup-result .more-count')).toHaveText('+1');
+    await popup.locator('#lookup-result .lookup-item').first().click();
+    await expect(popup.locator('#editor-host .save-scope')).toHaveText('All networks');
+    await popup.getByRole('button', { name: 'Close editor' }).click();
+    await popup.locator('#lookup-result .lookup-item').nth(1).click();
+    await expect(popup.locator('#editor-host .save-scope')).toHaveText('Base only');
+    await popup.getByRole('button', { name: 'Close editor' }).click();
+    await lookup.fill('Universal');
+    await expect(popup.locator('#lookup-result .lookup-item')).toHaveCount(1);
+    await expect(popup.locator('#lookup-result .lookup-name strong')).toHaveText('Universal');
+    await expect(popup.locator('#lookup-result .lookup-item small')).toContainText('Everywhere');
+    await expect(popup.locator('#lookup-result .lookup-item')).not.toContainText('Alias:');
+    await lookup.fill(address.slice(0, 12));
+    await expect(popup.locator('#lookup-result .lookup-item')).toHaveCount(1);
 
     const custom = '0x' + '12'.repeat(20);
     await lookup.fill(custom);
@@ -524,7 +540,7 @@ test('popup finder searches, copies and adds an address in a chosen scope', asyn
     });
     expect(seeded.ok, seeded.error).toBe(true);
     await lookup.fill('vault');
-    const more = popup.getByRole('button', { name: /more$/ });
+    const more = popup.locator('.lookup-more');
     await expect(more).toHaveText('1 more');
     await more.click();
     await expect.poll(async () => {
@@ -532,6 +548,15 @@ test('popup finder searches, copies and adds an address in a chosen scope', asyn
       return opened ? opened.locator('#search').inputValue() : null;
     }).toBe('vault');
     const bookTab = context.pages().find(page => page.url().startsWith(`chrome-extension://${id}/book.html`));
+    await expect(bookTab.locator('.record')).toHaveCount(6);
+    await bookTab.locator('.record').first().click();
+    await bookTab.getByRole('textbox', { name: 'Tag 1' }).fill('Unsaved book edit');
+    await popup.bringToFront();
+    await lookup.fill('0x');
+    await popup.locator('.lookup-more').click();
+    await expect(bookTab.locator('#search')).toHaveValue('0x');
+    await expect(bookTab.getByRole('textbox', { name: 'Tag 1' })).toHaveValue('Unsaved book edit');
+    expect(context.pages().filter(page => page.url().startsWith(`chrome-extension://${id}/book.html`))).toHaveLength(1);
     await bookTab.close();
     await popup.bringToFront();
     // Leave the field as the custom-chain address the next step reads.

@@ -5,7 +5,7 @@ import { checksumAddress } from './checksum.js';
 import { createEditor, editorStyles } from './editor.js';
 import { COPY_ICON, TRASH_ICON, confirmCopied } from './icons.js';
 
-export async function startBook({ rpc, watchBook, watchPending = () => {}, manageBooks = false }) {
+export async function startBook({ rpc, watchBook, watchPending = () => {}, watchSearch = () => {}, manageBooks = false }) {
 let state = emptyState;
 let busy = false;
 let editor;
@@ -155,6 +155,12 @@ $('#copy-in').onclick = async () => {
   } finally { busy = false; render(); }
 };
 $('#search').oninput = search;
+watchSearch(query => {
+  $('#search').value = query;
+  history.replaceState(null, '', query ? `${location.pathname}?q=${encodeURIComponent(query)}` : location.pathname);
+  search();
+  if (!editor) $('#search').focus({ preventScroll: true });
+});
 
 // Removing a book kept here destroys its addresses; removing one kept on a
 // server only forgets it. Same button, deliberately different words.

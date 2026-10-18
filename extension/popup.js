@@ -1,9 +1,9 @@
-import { filterEntries, hostPermission, normalizeScope, parseAddress, searchEntries, sourceName } from './shared.js';
+import { hostPermission, normalizeScope, parseAddress } from './shared.js';
 import { $, rpc, emptyState, currentSnapshot, syncText, bookPicker, connectForm, watchBook, tooltips } from './ui.js';
 import { networks, scopeName } from './networks.js';
 import { checksumAddress } from './checksum.js';
 import { createEditor, editorStyles } from './editor.js';
-import { COPY_ICON, confirmCopied } from './icons.js';
+import { COPY_ICON, PENCIL_ICON, confirmCopied } from './icons.js';
 
 let state = emptyState;
 let sites = {};
@@ -12,13 +12,13 @@ let siteURL;
 let busy = false;
 let siteBusy = false;
 let health = null;
-let entries = [];
+let recordsByAddress = new Map();
 let editor = null;
-let revealed = false;
 let chosenScope = 'global';
 let customChain = '';
 const shadow = $('#editor-host').attachShadow({ mode: 'open' });
 const editorReady = editorStyles(shadow);
+const bookSearch = new BroadcastChannel('0xtagger-book-search');
 const theme = matchMedia('(prefers-color-scheme: dark)');
 const applyTheme = () => $('#editor-host').toggleAttribute('data-dark', theme.matches);
 theme.addEventListener('change', applyTheme); applyTheme();
@@ -30,6 +30,7 @@ const node = (tag, className, value) => {
   return item;
 };
 const shortAddress = address => `${address.slice(0, 8)}…${address.slice(-6)}`;
+const showAddressStart = input => { input.setSelectionRange(0, 0); input.scrollLeft = 0; };
 
 async function edit(address, scope) {
   try {
@@ -58,42 +59,24 @@ async function edit(address, scope) {
 }
 
 function renderExact(address, output) {
-  const display = checksumAddress(address);
-  const found = state.records.filter(record => record.address === address)
+  const found = [...(recordsByAddress.get(address) || [])]
     .sort((a, b) => (a.scope === 'global' ? -1 : b.scope === 'global' ? 1 : scopeName(a.scope).localeCompare(scopeName(b.scope))));
-  $('#lookup-status').textContent = found.length ? `${found.length} saved ${found.length === 1 ? 'scope' : 'scopes'}.` : 'Address ready to add.';
-  const line = node('div', 'lookup-address');
-  const reveal = node('button', 'reveal', revealed ? display : shortAddress(display));
-  reveal.type = 'button';
-  reveal.setAttribute('aria-label', revealed ? 'Hide full address' : `Show full address ${display}`);
-  reveal.setAttribute('aria-expanded', String(revealed));
-  reveal.onclick = () => { revealed = !revealed; renderFinder(); $('#lookup-result .reveal').focus(); };
-  const copy = copyButton(display);
-  copy.onclick = async () => {
-    try { await navigator.clipboard.writeText(display); confirmCopied(copy, `Copied ${display}`); }
-    catch {
-      revealed = true; renderFinder();
-      const full = $('#lookup-result .reveal');
-      const range = document.createRange(); range.selectNodeContents(full);
-      getSelection().removeAllRanges(); getSelection().addRange(range);
-      tell('Address selected. Copy it with your keyboard.');
-    }
-  };
-  line.append(reveal, copy);
+  $('#lookup-status').textContent = found.length ? 'Saved names for this address.' : 'No saved names for this address.';
   if (found.length) {
-    // One row per scope, because each is its own record with its own editor.
-    // Within a row, the name it goes by and a count of its others — those the
-    // editor opens. A count never stands for a record this row cannot reach.
+    const group = node('div', 'lookup-detail');
+    // A network name takes precedence over the default there. The rows are
+    // separate edits, but one group, and the address already occupies the field.
     for (const record of found) {
-      output.append(resultRow(record, {
+      group.append(resultRow(record, {
         others: record.tags.length - 1,
+        scope: record.scope === 'global' ? (found.length > 1 ? 'Other networks' : 'All networks') : `${scopeName(record.scope)} only`,
+        action: 'Edit',
         open: () => edit(address, record.scope),
       }));
     }
-    output.append(line);
+    output.append(group);
     return;
   }
-  output.append(line);
   // A pasted address has no reliable chain context, unlike a name read from a
   // website. The global choice is explicit before a new record is written.
   const controls = node('div', 'add-controls');
@@ -128,41 +111,42 @@ function copyButton(display, className = 'quiet copy') {
   return copy;
 }
 
-function matchedOn(record, query) {
-  // The name shown already answers for itself; this is for the rest.
-  if (!query || record.tags[0].toLocaleLowerCase().includes(query)) return '';
-  const tag = record.tags.slice(1).find(value => value.toLocaleLowerCase().includes(query));
-  if (tag) return tag;
-  if (record.source && sourceName(record.source).toLocaleLowerCase().includes(query)) {
-    return sourceName(record.source);
-  }
-  return '';
+function matchedName(record, query) {
+  // The words searched lead the result, even when they are not the first name
+  // saved for this address. The primary name stays nearby without a caption.
+  return record.tags.find(tag => tag.toLocaleLowerCase().includes(query)) || record.tags[0];
 }
 
-function resultRow(record, { others = 0, address = '', note = '', open }) {
+function resultRow(record, { name = record.tags[0], others = 0, address = '', note = '', scope = '', action = '', open }) {
   const row = node('div', 'lookup-row');
   const item = node('button', 'lookup-item');
   item.type = 'button';
   const head = node('span', 'lookup-name');
-  head.append(node('strong', '', record.tags[0]));
-  // Every network is where a name stands unless it says otherwise, so only a
-  // narrower scope is worth the room.
-  const where = record.scope === 'global' ? '' : scopeName(record.scope);
+  head.append(node('strong', '', name));
   if (others > 0) head.append(node('span', 'more-count', `+${others}`));
   item.append(head);
-  if (address || note || where) {
+  if (address || note || scope) {
     const under = node('small');
     // The address is read character by character; the words beside it are not.
-    if (address) under.append(node('span', 'hex', address));
-    for (const part of [note, where].filter(Boolean)) {
+    if (note) under.append(note);
+    if (address) {
+      if (under.childNodes.length) under.append(' · ');
+      under.append(node('span', 'hex', address));
+    }
+    for (const part of [scope].filter(Boolean)) {
       if (under.childNodes.length) under.append(' · ');
       under.append(part);
     }
     item.append(under);
   }
+  if (action) {
+    const icon = node('span', 'lookup-action');
+    icon.innerHTML = PENCIL_ICON;
+    icon.setAttribute('aria-hidden', 'true');
+    item.append(icon);
+  }
   item.setAttribute('aria-label',
-    [record.tags[0], note ? `matching ${note}` : '', others > 0 ? `and ${others} more` : '',
-     where, address].filter(Boolean).join(', '));
+    [action, name, note, scope, others > 0 ? `and ${others} more` : '', address].filter(Boolean).join(', '));
   item.onclick = open;
   item.onkeydown = event => {
     if (event.key === 'Escape') { event.preventDefault(); $('#lookup').focus(); }
@@ -185,14 +169,13 @@ function resultRow(record, { others = 0, address = '', note = '', open }) {
   return row;
 }
 
-function popupRank(entry, query) {
-  const { record } = entry;
+function popupRank(record, query) {
   const tags = record.tags.map(tag => tag.toLocaleLowerCase());
   if (tags.includes(query)) return 0;
   if (tags.some(tag => tag.startsWith(query))) return 1;
   if (record.address.startsWith(query)) return 2;
   if (tags.some(tag => tag.includes(query))) return 3;
-  if (scopeName(record.scope).toLocaleLowerCase().includes(query)) return 4;
+  if (record.address.includes(query)) return 4;
   return 5;
 }
 
@@ -201,6 +184,8 @@ function renderFinder() {
   const output = $('#lookup-result');
   const value = input.value.trim();
   $('#lookup-clear').hidden = !input.value;
+  const address = parseAddress(value);
+  $('#lookup-copy').hidden = !address;
   output.replaceChildren();
   if (!value) {
     $('#lookup-status').textContent = '';
@@ -209,33 +194,48 @@ function renderFinder() {
     if (!state.records.length) output.append(node('p', 'lookup-hint', 'No tags yet'));
     return;
   }
-  const address = parseAddress(value);
   if (address) { renderExact(address, output); return; }
   const query = value.toLocaleLowerCase();
-  const matches = filterEntries(entries, value)
+  // This field promises names and addresses. Source and scope metadata stay
+  // searchable in the full book, where those columns explain their matches.
+  const matches = state.records.filter(record => record.address.includes(query) ||
+    record.tags.some(tag => tag.toLocaleLowerCase().includes(query)))
     .sort((a, b) => popupRank(a, query) - popupRank(b, query) ||
-      a.record.tags[0].localeCompare(b.record.tags[0]) || a.record.address.localeCompare(b.record.address));
-  if (!matches.length) {
+      a.tags[0].localeCompare(b.tags[0]) || a.address.localeCompare(b.address));
+  // Search answers with addresses. A record on another network is another
+  // name for the same destination, not a second destination in this list.
+  const byAddress = new Map();
+  for (const record of matches) if (!byAddress.has(record.address)) byAddress.set(record.address, record);
+  const distinct = [...byAddress.values()];
+  if (!distinct.length) {
     $('#lookup-status').textContent = 'No matches.';
     output.append(node('p', 'lookup-hint',
       value.startsWith('0x') ? 'Paste the full address to add it' : 'No matches'));
     return;
   }
   const list = node('div', 'lookup-list');
-  $('#lookup-status').textContent = `${matches.length} ${matches.length === 1 ? 'match' : 'matches'}.`;
-  for (const { record } of matches.slice(0, 5)) {
+  $('#lookup-status').textContent = `${distinct.length} ${distinct.length === 1 ? 'address' : 'addresses'} found.`;
+  for (const record of distinct.slice(0, 5)) {
+    const name = matchedName(record, query);
+    const where = record.scope === 'global'
+      ? ((recordsByAddress.get(record.address)?.length || 0) > 1 ? 'Other networks' : 'All networks')
+      : `${scopeName(record.scope)} only`;
     list.append(resultRow(record, {
+      name,
       others: record.tags.length - 1,
       address: shortAddress(checksumAddress(record.address)),
-      note: matchedOn(record, query),
-      open: () => { input.value = checksumAddress(record.address); revealed = false; renderFinder(); $('#lookup-result .reveal').focus(); },
+      note: name === record.tags[0] ? '' : record.tags[0],
+      scope: where,
+      open: () => { input.value = checksumAddress(record.address); renderFinder(); input.focus(); showAddressStart(input); },
     }));
   }
   output.append(list);
-  if (matches.length > 5) {
+  if (distinct.length > 5) {
     // A way to the rest, rather than a sentence about there being more.
-    const more = node('button', 'quiet lookup-more', `${matches.length - 5} more`);
-    more.type = 'button'; more.onclick = () => openBook(value);
+    const more = node('button', 'quiet lookup-more', `${distinct.length - 5} more`);
+    more.type = 'button';
+    more.setAttribute('aria-label', `Open ${distinct.length - 5} more matching addresses in the book`);
+    more.onclick = () => openBook(value).catch(tell);
     output.append(more);
   }
 }
@@ -260,7 +260,13 @@ const picker = bookPicker({
 });
 function render(next = state) {
   if (!currentSnapshot(next, state)) return;
-  if (next.records !== state.records) entries = searchEntries(next.records);
+  if (next.records !== state.records) {
+    recordsByAddress = new Map();
+    for (const record of next.records) {
+      if (!recordsByAddress.has(record.address)) recordsByAddress.set(record.address, []);
+      recordsByAddress.get(record.address).push(record);
+    }
+  }
   state = next;
   picker(state);
   if (editor) editor.updateState(state);
@@ -295,8 +301,10 @@ async function openBook(query = '') {
   const open = await chrome.runtime.getContexts({ contextTypes: ['TAB'] });
   const book = open.find(context => context.documentUrl?.startsWith(page));
   if (book) {
-    await chrome.tabs.update(book.tabId, { active: true, ...(query ? { url } : {}) });
+    await chrome.tabs.update(book.tabId, { active: true });
     await chrome.windows.update(book.windowId, { focused: true });
+    // Reusing the live page keeps an unfinished edit or import review intact.
+    if (query) bookSearch.postMessage({ tabId: book.tabId, query });
   } else await chrome.tabs.create({ url });
 }
 async function enable(enabled) {
@@ -316,7 +324,24 @@ async function enable(enabled) {
   finally { siteBusy = false; render(); }
 }
 $('#site-toggle').onclick = () => enable(!sites[siteURL?.origin]);
-$('#lookup').oninput = () => { revealed = false; chosenScope = 'global'; customChain = ''; renderFinder(); };
+$('#lookup').oninput = event => {
+  chosenScope = 'global'; customChain = ''; renderFinder();
+  // A pasted full address is a lookup, not a word being composed. Leave its
+  // recognizable 0x prefix in view instead of the tail of a scrolled field.
+  if (event.inputType === 'insertFromPaste' && parseAddress($('#lookup').value.trim())) showAddressStart($('#lookup'));
+};
+$('#lookup-copy').innerHTML = COPY_ICON;
+$('#lookup-copy').onclick = async () => {
+  const address = parseAddress($('#lookup').value.trim());
+  if (!address) return;
+  const display = checksumAddress(address);
+  try { await navigator.clipboard.writeText(display); confirmCopied($('#lookup-copy'), 'Address copied'); }
+  catch {
+    $('#lookup').value = display;
+    $('#lookup').focus(); $('#lookup').select();
+    tell('Address selected. Copy it with your keyboard.');
+  }
+};
 $('#lookup').onkeydown = event => {
   if (event.key === 'ArrowDown') {
     const first = $('#lookup-result .lookup-item');
@@ -331,7 +356,7 @@ $('#lookup').onkeydown = event => {
   }
 };
 $('#lookup-clear').onclick = () => {
-  $('#lookup').value = ''; revealed = false; chosenScope = 'global'; customChain = '';
+  $('#lookup').value = ''; chosenScope = 'global'; customChain = '';
   renderFinder(); $('#lookup').focus();
 };
 $('#disable').onclick = () => enable(false);

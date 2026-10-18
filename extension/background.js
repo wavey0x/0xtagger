@@ -140,7 +140,14 @@ async function authorizedPage(sender) {
   catch { return false; }
 }
 function trustedView(sender) {
-  return sender.id === chrome.runtime.id && ['popup.html', 'book.html'].some(page => sender.url === chrome.runtime.getURL(page));
+  if (sender.id !== chrome.runtime.id || !sender.url) return false;
+  try {
+    const url = new URL(sender.url);
+    return ['popup.html', 'book.html'].some(page => {
+      const expected = new URL(chrome.runtime.getURL(page));
+      return url.origin === expected.origin && url.pathname === expected.pathname;
+    });
+  } catch { return false; }
 }
 
 async function handle(message, sender) {
