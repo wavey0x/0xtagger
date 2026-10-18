@@ -88,12 +88,20 @@ const etherscanAdapter = site({
   // thing identifying everything below it, or the value that was asked for.
   subject: `#mainaddress,${CONTRACT_READER} a[href*="/address/"]`,
   // Address badges lose their decoration only while a custom tag is visible.
+  // seen: etherscan.io/txs?a=0x16388463d60FFE0661Cf7F1f31a7D658aC790ff7,
+  // 2026-10-18 — sign in with a private name tag for 0x1b5f15…D271 and open
+  // its From row. Etherscan caps [data-truncate=address] at 21ch; our hidden
+  // native text has zero font size, so that cap becomes zero and clips the tag.
+  // 171px is that cap at Etherscan's normal 14px link size.
   styles: `.badge:is([data-0xtagger-tag], :has([data-0xtagger-tag])) {
       background: transparent !important;
       border: 0 !important;
       border-radius: 0 !important;
       box-shadow: none !important;
       padding: 0 !important;
+    }
+    [data-truncate="address"][data-0xtagger-tag] {
+      max-width: 171px;
     }`,
   probe({ document, url, embedded }) {
     if (document.querySelector('#challenge-running,#challenge-stage,[name="cf-turnstile-response"]') || /^(Just a moment|Attention Required)/i.test(document.title)) return { status: 'waiting' };

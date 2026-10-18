@@ -81,3 +81,26 @@ for (const name of ['Convex Governance Multisig', 'Ops']) {
     expect(narrow.width / Math.min(wide.width, narrowBox.width)).toBeGreaterThanOrEqual(0.9);
   });
 }
+
+// Etherscan's private-name badge has a 21ch width cap on the same element whose
+// native text we hide. The cap becomes zero unless the adapter restores it.
+test('a saved name remains painted beside the edit glyph in a transaction row', async ({ page }) => {
+  await start(page, { records: [{ ...record, tags: ['Schlag deployer'] }],
+    site: 'https://etherscan.io/txs?a=0x16388463d60FFE0661Cf7F1f31a7D658aC790ff7',
+    html: `<style>body{background:#fff;font:14px system-ui}main{margin:80px}
+      .row{display:flex;align-items:center;gap:4px;width:190px}
+      [data-truncate=address]{display:inline-block;max-width:21ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .hash-tag{display:block;flex:0 1 auto}
+      .copy{flex:none;width:20px;height:20px;background:#999}</style>
+      <header>Explorer</header><main><div class="row">
+        <a id="from" class="badge hash-tag text-truncate" data-truncate="address"
+          data-full-address="${address}" href="/address/${address}">Yearn: Deployer 30</a>
+        <span class="copy" aria-label="Copy Address"></span>
+      </div></main>` });
+  const link = page.locator('#from');
+  await expect(link).toHaveAttribute('data-0xtagger-tag', 'Schlag deployer');
+  const box = await link.boundingBox();
+  expect(box.width).toBeGreaterThan(25);
+  const painted = await ink(page, { x: box.x, y: box.y - 2, width: box.width, height: box.height + 4 });
+  expect(painted.width).toBeGreaterThan(25);
+});
