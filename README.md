@@ -28,7 +28,7 @@ git clone https://github.com/wavey0x/0xtagger.git
 ```
 
 1. Open `brave://extensions` or `chrome://extensions`, enable **Developer mode**, and **Load unpacked** → this project's `extension` folder.
-2. Enable the website in the popup. Click the purple tag glyph beside an address to tag it.
+2. Enable the website in the popup. Click the purple tag glyph beside an address, or use the popup's search field to find and tag any full `0x` address.
 
 #### Sharing a book between devices
 

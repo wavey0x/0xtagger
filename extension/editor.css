@@ -62,6 +62,7 @@ dialog.editor::backdrop { background: var(--0xtagger-backdrop); backdrop-filter:
 .conflict button { padding: 4px 0; font-size: 11px; color: var(--0xtagger-accent); }
 .conflict button + button { margin-left: 14px; }
 footer { margin-top: 8px; }
+.save-scope { max-width: 50%; color: var(--0xtagger-muted); font-size: 10px; line-height: 1.2; text-align: right; overflow-wrap: anywhere; }
 /* Inline with the address, like the site's native copy control. */
 .inline-tag { position: relative; display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 3px; border-radius: 4px; color: var(--0xtagger-accent); background: transparent; transition: transform 180ms cubic-bezier(.2,.9,.25,1.4), background-color 120ms ease; }
 /* The one piece of motion in 0xtagger: a press that gives, then springs back

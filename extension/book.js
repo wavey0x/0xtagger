@@ -1,5 +1,5 @@
 import { $, emptyState, currentSnapshot, syncText, bookPicker, connectForm, dismissDialog, tooltips } from './ui.js';
-import { parseAddress, normalizeScope, readBookFile, reviewImport, sourceName } from './shared.js';
+import { parseAddress, normalizeScope, readBookFile, reviewImport, sourceName, searchEntries, filterEntries } from './shared.js';
 import { scopeName } from './networks.js';
 import { checksumAddress } from './checksum.js';
 import { createEditor, editorStyles } from './editor.js';
@@ -57,11 +57,8 @@ function render(next = state) {
   $('#count').textContent = `${count.toLocaleString()} address${count === 1 ? '' : 'es'}`;
   // Sorted by name, so the order is a property of the book rather than of the
   // order it happened to be written in.
-  entries = state.records
-    // Searchable by where it came from too, so "safe" finds everything a Safe
-    // book brought in without anyone having to remember which names those were.
-    .map(record => ({ record, row: null,
-      text: [record.address, ...record.tags, scopeName(record.scope), sourceName(record.source)].join('\n').toLocaleLowerCase() }))
+  entries = searchEntries(state.records)
+    .map(entry => ({ ...entry, row: null }))
     .sort((one, two) => one.record.tags[0].localeCompare(two.record.tags[0]) ||
       one.record.address.localeCompare(two.record.address));
   if (editor) editor.updateState(state);
@@ -118,8 +115,7 @@ function bookRow(record) {
 // costs seconds and shows nobody anything: searching is how you find one.
 const SHOWN = 250;
 function search() {
-  const value = $('#search').value.trim().toLocaleLowerCase();
-  const matches = entries.filter(entry => entry.text.includes(value));
+  const matches = filterEntries(entries, $('#search').value);
   // Cache rows and checksums per snapshot; searches only filter the local book.
   const rows = matches.slice(0, SHOWN).map(entry => entry.row ||= bookRow(entry.record));
   if (rows.length !== visibleRows.length || rows.some((row, index) => row !== visibleRows[index])) {

@@ -30,11 +30,11 @@ Open `brave://extensions` or `chrome://extensions`, enable **Developer mode**, c
 
 0xtagger starts with one address book kept on this device. There is nothing to connect and nothing to configure.
 
-Open a supported website, then turn on the popup's **On this website** switch. The toolbar turns deep purple when tagging is active. Permissions are granted per website; other sites remain untouched. **Open address book** opens a full-page extension tab for searching, adding, editing, removing, importing, and exporting tags.
+Open a supported website, then turn on the popup's **On this website** switch. The toolbar turns deep purple when tagging is active. Permissions are granted per website; other sites remain untouched. The popup also finds tags by name or address and adds a new address when you paste its full `0x` value. **Open address book** opens the full-page view for browsing, bulk work, importing, and exporting.
 
 Click the purple tag glyph beside an address to edit its tags. The first tag is the default; + appends another and arrows reorder them. Enter saves; Escape or an outside click dismisses the draft. Turn off **Show tags** to temporarily reveal the website's original presentation for matching occurrences on that page. The popup's **On this website** switch restores every website default and persists across refreshes.
 
-New inline tags apply globally. Editing an existing network override retains its scope. **Add address** in the full-page book offers an optional chain ID for a scoped list; removing that override reveals the global tags. The address switch suppresses the whole replacement until restored or reset by refresh, navigation, or switching books. **Remove tags** in the book editor prepares a deletion; Save commits it.
+An inline editor shows its Save scope beside the button. It keeps an existing record's scope, otherwise uses the website's network for a usable site name, otherwise all networks. A pasted address in the popup starts with an explicit **All networks** choice, because its source may have nothing to do with the active tab. The popup and full-page book can choose a network for new tags. Removing a network override reveals global tags. The address switch suppresses the whole replacement until restored or reset by refresh, navigation, or switching books. **Remove tags** in the book editor prepares a deletion; Save commits it.
 
 ## Keep a book on a server
 

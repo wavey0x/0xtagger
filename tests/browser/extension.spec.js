@@ -429,6 +429,95 @@ test('installed extension: a book that works with no setup, moving it to a serve
   }
 });
 
+test('popup finder searches, copies and adds an address in a chosen scope', async () => {
+  test.setTimeout(60000);
+  const profile = await mkdtemp(path.join(tmpdir(), '0xtagger-finder-test-'));
+  const extension = path.join(profile, 'extension');
+  await cp(path.resolve('extension'), extension, { recursive: true });
+  const context = await chromium.launchPersistentContext(profile, {
+    channel: 'chromium', headless: true,
+    args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
+  });
+  try {
+    const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
+    const id = worker.url().split('/')[2];
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://127.0.0.1:8719' });
+    const site = context.pages()[0];
+    await site.goto('http://127.0.0.1:8719/tests/fixtures/generic.html');
+    const popup = await context.newPage();
+    await popup.bringToFront();
+    await popup.goto(`chrome-extension://${id}/popup.html`);
+    const lookup = popup.locator('#lookup');
+    await expect(lookup).toBeFocused();
+    await expect(popup.locator('#lookup-result')).toContainText('first tag');
+
+    const address = '0x' + 'ef'.repeat(20);
+    await lookup.fill(address.slice(0, 12));
+    await expect(popup.getByRole('button', { name: 'Add tags' })).toHaveCount(0);
+    await lookup.fill(address);
+    await expect(popup.locator('#lookup-result .reveal')).toContainText('…');
+    await popup.getByRole('combobox', { name: 'Where new tags apply' }).selectOption('eip155:8453');
+    await popup.getByRole('button', { name: 'Add tags' }).click();
+    await expect(popup.locator('#home')).toBeHidden();
+    await expect(popup.locator('#editor-host .save-scope')).toHaveText('Base only');
+    await popup.getByRole('textbox', { name: 'Tag 1' }).fill('Base payroll');
+    await popup.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(popup.locator('#home')).toBeVisible();
+    await expect(popup.locator('#lookup-result .scope-row')).toContainText('Base payroll');
+
+    const display = checksumAddress(address);
+    await popup.locator('#lookup-result .reveal').click();
+    await expect(popup.locator('#lookup-result .reveal')).toHaveText(display);
+    await popup.locator('#lookup-result .copy').click();
+    await expect(popup.getByRole('button', { name: `Copied ${display}` })).toBeVisible();
+    await site.bringToFront();
+    expect(await site.evaluate(() => navigator.clipboard.readText())).toBe(display);
+    await popup.bringToFront();
+
+    await lookup.fill('payroll');
+    await expect(popup.locator('.lookup-item')).toHaveCount(1);
+    await lookup.press('ArrowDown');
+    await expect(popup.locator('.lookup-item')).toBeFocused();
+    await popup.locator('.lookup-item').press('Enter');
+    await expect(lookup).toHaveValue(display);
+    await expect(popup.locator('#lookup-result .scope-row')).toContainText('Base');
+
+    const addGlobal = await popup.evaluate(async at => {
+      const state = (await chrome.runtime.sendMessage({ type: 'State' })).result.state;
+      return chrome.runtime.sendMessage({ type: 'Save', draft: {
+        book: state.activeBook, address: at, scope: 'global', tags: ['Everywhere'], version: null,
+      } });
+    }, address);
+    expect(addGlobal.ok, addGlobal.error).toBe(true);
+    await expect(popup.locator('#lookup-result .scope-row')).toHaveCount(2);
+    await expect(popup.locator('#lookup-result .scope-row').first()).toContainText('All networks');
+
+    const custom = '0x' + '12'.repeat(20);
+    await lookup.fill(custom);
+    await popup.getByRole('combobox', { name: 'Where new tags apply' }).selectOption('custom');
+    await popup.getByRole('textbox', { name: 'Chain ID' }).fill('0');
+    await popup.getByRole('button', { name: 'Add tags' }).click();
+    await expect(popup.locator('.lookup-error')).toContainText('known network');
+    await popup.getByRole('textbox', { name: 'Chain ID' }).fill('42170');
+    await popup.getByRole('button', { name: 'Add tags' }).click();
+    await expect(popup.locator('#editor-host .save-scope')).toHaveText('Chain 42170 only');
+    await popup.getByRole('textbox', { name: 'Tag 1' }).fill('Custom chain');
+    await popup.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(popup.locator('#lookup-result .scope-row')).toContainText('Chain 42170');
+
+    const switched = await popup.evaluate(async () => {
+      const added = await chrome.runtime.sendMessage({ type: 'AddBook', name: 'Other', storage: { kind: 'device' } });
+      if (!added.ok) return added;
+      return chrome.runtime.sendMessage({ type: 'Use', book: added.result.book });
+    });
+    expect(switched.ok, switched.error).toBe(true);
+    await expect(lookup).toHaveValue(checksumAddress(custom));
+    await expect(popup.locator('#lookup-result')).toContainText('No tags for this address in this book.');
+  } finally {
+    await context.close(); await rm(profile, { recursive: true, force: true });
+  }
+});
+
 // Importing is one screen you read: what is going where, what is already
 // yours, and one button. The write that follows comes from the book page,
 // never from the website the names were read on.

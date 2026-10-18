@@ -1,5 +1,9 @@
-import { hostPermission } from './shared.js';
+import { filterEntries, hostPermission, normalizeScope, parseAddress, searchEntries, sourceName } from './shared.js';
 import { $, rpc, emptyState, currentSnapshot, syncText, bookPicker, connectForm, watchBook, tooltips } from './ui.js';
+import { networks, scopeName } from './networks.js';
+import { checksumAddress } from './checksum.js';
+import { createEditor, editorStyles } from './editor.js';
+import { COPY_ICON, confirmCopied } from './icons.js';
 
 let state = emptyState;
 let sites = {};
@@ -8,7 +12,174 @@ let siteURL;
 let busy = false;
 let siteBusy = false;
 let health = null;
+let entries = [];
+let editor = null;
+let revealed = false;
+let chosenScope = 'global';
+let customChain = '';
+const shadow = $('#editor-host').attachShadow({ mode: 'open' });
+const editorReady = editorStyles(shadow);
+const theme = matchMedia('(prefers-color-scheme: dark)');
+const applyTheme = () => $('#editor-host').toggleAttribute('data-dark', theme.matches);
+theme.addEventListener('change', applyTheme); applyTheme();
 const tell = error => { $('#message').textContent = error?.message || String(error || ''); };
+const node = (tag, className, value) => {
+  const item = document.createElement(tag);
+  if (className) item.className = className;
+  if (value !== undefined) item.textContent = value;
+  return item;
+};
+const shortAddress = address => `${address.slice(0, 8)}…${address.slice(-6)}`;
+
+async function edit(address, scope) {
+  try {
+    await editorReady;
+    $('#home').hidden = true;
+    $('#editor-host').hidden = false;
+    tell('');
+    editor = createEditor(shadow, { address, scope, state,
+      save: draft => rpc({ type: 'Save', draft }),
+      close: () => {
+        editor = null;
+        shadow.replaceChildren();
+        $('#editor-host').hidden = true;
+        $('#home').hidden = false;
+        renderFinder();
+        $('#lookup').focus();
+        rpc({ type: 'State' }).then(result => render(result.state)).catch(tell);
+      },
+    });
+    editor.focus();
+  } catch (error) {
+    $('#editor-host').hidden = true;
+    $('#home').hidden = false;
+    tell(error);
+  }
+}
+
+function renderExact(address, output) {
+  const display = checksumAddress(address);
+  const found = state.records.filter(record => record.address === address)
+    .sort((a, b) => (a.scope === 'global' ? -1 : b.scope === 'global' ? 1 : scopeName(a.scope).localeCompare(scopeName(b.scope))));
+  $('#lookup-status').textContent = found.length ? `${found.length} saved ${found.length === 1 ? 'scope' : 'scopes'}.` : 'Address ready to add.';
+  const line = node('div', 'lookup-address');
+  const reveal = node('button', 'reveal', revealed ? display : shortAddress(display));
+  reveal.type = 'button';
+  reveal.setAttribute('aria-label', revealed ? 'Hide full address' : `Show full address ${display}`);
+  reveal.setAttribute('aria-expanded', String(revealed));
+  reveal.onclick = () => { revealed = !revealed; renderFinder(); $('#lookup-result .reveal').focus(); };
+  const copy = node('button', 'quiet copy');
+  copy.type = 'button'; copy.innerHTML = COPY_ICON;
+  copy.setAttribute('aria-label', `Copy ${display}`);
+  copy.onclick = async () => {
+    try { await navigator.clipboard.writeText(display); confirmCopied(copy, `Copied ${display}`); }
+    catch {
+      revealed = true; renderFinder();
+      const full = $('#lookup-result .reveal');
+      const range = document.createRange(); range.selectNodeContents(full);
+      getSelection().removeAllRanges(); getSelection().addRange(range);
+      tell('Address selected. Copy it with your keyboard.');
+    }
+  };
+  line.append(reveal, copy); output.append(line);
+  if (found.length) {
+    for (const record of found) {
+      const row = node('div', 'scope-row');
+      const tags = node('div', 'tags', record.tags.join(' · '));
+      tags.append(node('small', '', scopeName(record.scope)));
+      const button = node('button', 'quiet', 'Edit');
+      button.type = 'button'; button.setAttribute('aria-label', `Edit ${scopeName(record.scope)} tags for ${display}`);
+      button.onclick = () => edit(address, record.scope);
+      row.append(tags, button); output.append(row);
+    }
+    return;
+  }
+  output.append(node('p', 'lookup-hint', state.error ? 'No tag in the saved copy of this book.' : 'No tags for this address in this book.'));
+  // A pasted address has no reliable chain context, unlike a name read from a
+  // website. The global choice is explicit before a new record is written.
+  const controls = node('div', 'add-controls');
+  const select = node('select');
+  select.setAttribute('aria-label', 'Where new tags apply');
+  for (const [value, label] of [['global', 'All networks'], ...networks.map(network => [`eip155:${network.chain}`, network.name]), ['custom', 'Other chain…']]) {
+    const option = node('option', '', label); option.value = value; select.append(option);
+  }
+  select.value = chosenScope;
+  const chain = node('input', 'add-chain');
+  chain.inputMode = 'numeric'; chain.placeholder = 'Chain ID'; chain.setAttribute('aria-label', 'Chain ID');
+  chain.value = customChain; chain.hidden = chosenScope !== 'custom';
+  select.onchange = () => { chosenScope = select.value; chain.hidden = chosenScope !== 'custom'; if (!chain.hidden) chain.focus(); };
+  chain.oninput = () => { customChain = chain.value; };
+  const add = node('button', 'primary', 'Add tags');
+  add.type = 'button';
+  const error = node('p', 'lookup-error');
+  add.onclick = () => {
+    try {
+      const scope = chosenScope === 'custom' ? normalizeScope(`eip155:${chain.value.trim()}`) : chosenScope;
+      error.textContent = '';
+      edit(address, scope);
+    } catch (failure) { error.textContent = failure.message; }
+  };
+  controls.append(select, add); output.append(controls, chain, error);
+}
+
+function popupRank(entry, query) {
+  const { record } = entry;
+  const tags = record.tags.map(tag => tag.toLocaleLowerCase());
+  if (tags.includes(query)) return 0;
+  if (tags.some(tag => tag.startsWith(query))) return 1;
+  if (record.address.startsWith(query)) return 2;
+  if (tags.some(tag => tag.includes(query))) return 3;
+  if (scopeName(record.scope).toLocaleLowerCase().includes(query)) return 4;
+  return 5;
+}
+
+function renderFinder() {
+  const input = $('#lookup');
+  const output = $('#lookup-result');
+  const value = input.value.trim();
+  $('#lookup-clear').hidden = !input.value;
+  output.replaceChildren();
+  if (!value) {
+    $('#lookup-status').textContent = '';
+    output.append(node('p', 'lookup-hint', state.records.length
+      ? 'Find a tag or paste a full address.'
+      : siteURL ? 'Enable tagging on this site, or paste an address to add your first tag.'
+        : 'Paste a full address to add your first tag.'));
+    return;
+  }
+  const address = parseAddress(value);
+  if (address) { renderExact(address, output); return; }
+  const query = value.toLocaleLowerCase();
+  const matches = filterEntries(entries, value)
+    .sort((a, b) => popupRank(a, query) - popupRank(b, query) ||
+      a.record.tags[0].localeCompare(b.record.tags[0]) || a.record.address.localeCompare(b.record.address));
+  if (!matches.length) {
+    $('#lookup-status').textContent = 'No matches.';
+    output.append(node('p', 'lookup-hint', value.startsWith('0x')
+      ? 'No match. Paste a full 0x address to add it.' : 'No matching tags or addresses.'));
+    return;
+  }
+  const list = node('div', 'lookup-list');
+  $('#lookup-status').textContent = `${matches.length} ${matches.length === 1 ? 'match' : 'matches'}.`;
+  for (const { record } of matches.slice(0, 5)) {
+    const item = node('button', 'lookup-item');
+    item.type = 'button';
+    item.append(node('strong', '', record.tags.join(' · ')),
+      node('small', '', `${shortAddress(checksumAddress(record.address))} · ${scopeName(record.scope)}${record.source ? ` · ${sourceName(record.source)}` : ''}`));
+    item.onclick = () => { input.value = checksumAddress(record.address); revealed = false; renderFinder(); $('#lookup-result .reveal').focus(); };
+    item.onkeydown = event => {
+      if (event.key === 'Escape') { event.preventDefault(); input.focus(); }
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        const items = [...list.querySelectorAll('.lookup-item')];
+        items[Math.max(0, Math.min(items.length - 1, items.indexOf(item) + (event.key === 'ArrowDown' ? 1 : -1)))].focus();
+      }
+    };
+    list.append(item);
+  }
+  output.append(list);
+  if (matches.length > 5) output.append(node('p', 'lookup-more', `Showing 5 of ${matches.length}. Narrow your search or open the book.`));
+}
 const setup = connectForm({ container: $('#server'), state: () => state, created: render,
   busy: value => { busy = value; render(); }, error: tell,
   visible: open => { $('#home').hidden = open; tell(''); },
@@ -30,8 +201,10 @@ const picker = bookPicker({
 });
 function render(next = state) {
   if (!currentSnapshot(next, state)) return;
+  if (next.records !== state.records) entries = searchEntries(next.records);
   state = next;
   picker(state);
+  if (editor) editor.updateState(state);
   $('#location').disabled = busy;
   $('#sync').textContent = busy ? 'Connecting…' : syncText(state);
   $('#sync').dataset.tip = state.error || '';
@@ -51,6 +224,7 @@ function render(next = state) {
   $('#import-site').hidden = !offers;
   $('#import-site').disabled = busy || siteBusy;
   if (offers) $('#import-site').textContent = `Import names from ${health.adapter}`;
+  renderFinder();
 }
 async function openBook() {
   const url = chrome.runtime.getURL('book.html');
@@ -77,6 +251,24 @@ async function enable(enabled) {
   finally { siteBusy = false; render(); }
 }
 $('#site-toggle').onclick = () => enable(!sites[siteURL?.origin]);
+$('#lookup').oninput = () => { revealed = false; chosenScope = 'global'; customChain = ''; renderFinder(); };
+$('#lookup').onkeydown = event => {
+  if (event.key === 'ArrowDown') {
+    const first = $('#lookup-result .lookup-item');
+    if (first) { event.preventDefault(); first.focus(); }
+  }
+  if (event.key === 'Enter') {
+    const action = $('#lookup-result .add-controls button, #lookup-result .scope-row button, #lookup-result .lookup-item');
+    if (action) { event.preventDefault(); action.click(); }
+  }
+  if (event.key === 'Escape' && $('#lookup').value) {
+    event.preventDefault(); $('#lookup').value = ''; renderFinder();
+  }
+};
+$('#lookup-clear').onclick = () => {
+  $('#lookup').value = ''; revealed = false; chosenScope = 'global'; customChain = '';
+  renderFinder(); $('#lookup').focus();
+};
 $('#disable').onclick = () => enable(false);
 $('#retry').onclick = async () => {
   try {
@@ -93,8 +285,8 @@ $('#open-book').onclick = async () => {
   catch (error) { tell(error); }
   finally { button.disabled = false; }
 };
-// The website is asked what it keeps; the book page is where it is read and
-// where the decision is made. Nothing is written from here.
+// This import action only asks what the website keeps; the book page is where
+// the user reviews those names and decides what to save.
 $('#import-site').onclick = async () => {
   const button = $('#import-site');
   if (button.disabled) return;
@@ -115,6 +307,7 @@ try {
   $('#site-name').textContent = siteURL?.hostname || '';
   const result = await rpc({ type: 'State', tabId: tab?.id });
   sites = result.sites; health = result.health; render(result.state);
+  $('#lookup').focus();
   // The popup is only ever open for a moment, so ask while it is, rather than
   // waiting for a button press to make the time above it true. The ask is
   // conditional and rate limited, so opening the popup repeatedly costs little.

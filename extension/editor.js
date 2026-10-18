@@ -1,5 +1,6 @@
 import { findRecord, MAX_TAGS, MAX_TAG_LENGTH, normalizeTags, sameTags, sourceName, usableName } from './shared.js';
 import { checksumAddress } from './checksum.js';
+import { scopeName } from './networks.js';
 import { EDITOR_MARK, COPY_ICON, COPIED_ICON, confirmCopied } from './icons.js';
 
 const element = (tag, text, attrs = {}) => {
@@ -78,11 +79,12 @@ export function createEditor(container, { address, scope = 'global', state, save
     <div class="address-line"><code></code><button type="button" class="quiet copy" aria-label="Copy">${COPY_ICON}</button></div>
     <div class="rows"></div>
     <p class="preview"></p><p class="offer" hidden></p><p class="notice" role="status"></p><div class="conflict" hidden></div>
-    <footer><button type="button" class="quiet add" aria-label="Add tag" title="Add tag">+</button>${modal && own ? '<button type="button" class="quiet clear">Remove tags</button>' : ''}<button type="button" class="primary save">Save</button></footer>`;
+    <footer><button type="button" class="quiet add" aria-label="Add tag" title="Add tag">+</button>${modal && own ? '<button type="button" class="quiet clear">Remove tags</button>' : ''}<span class="save-scope" id="save-scope"></span><button type="button" class="primary save" aria-describedby="save-scope">Save</button></footer>`;
   container.replaceChildren(panel);
   if (modal) panel.showModal();
   const get = selector => panel.querySelector(selector);
   get('code').textContent = displayAddress;
+  get('.save-scope').textContent = scope === 'global' ? 'All networks' : `${scopeName(scope)} only`;
   const origin = modal && own?.source ? `Source: ${sourceName(own.source)}` : '';
   get('.source').textContent = [bookName, origin].filter(Boolean).join(' · ');
   get('.source').title = [bookName ? `Saving to ${bookName}` : 'Saving to your address book', origin].filter(Boolean).join(' · ');

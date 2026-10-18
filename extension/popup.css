@@ -19,3 +19,32 @@ body { width: 320px; padding: 10px; background: radial-gradient(ellipse at top l
 
 /* Offered only where a website keeps names of its own, and only once it is on. */
 .import-site { display: block; width: 100%; margin-top: 8px; text-align: left; font-size: 12px; }
+
+.finder { padding-top: 12px; }
+.finder label { display: block; margin-bottom: 6px; font-size: 11px; font-weight: 750; }
+.lookup-field { display: flex; align-items: center; min-height: 36px; border: 1px solid var(--0xtagger-line); border-radius: 8px; background: var(--0xtagger-soft); }
+.lookup-field:focus-within { border-color: var(--0xtagger-accent); }
+#lookup { min-width: 0; flex: 1; border: 0; background: transparent; padding: 8px 10px; color: var(--0xtagger-ink); font: 12px system-ui, sans-serif; outline: 0; }
+#lookup-clear { flex: none; padding: 3px 9px; font-size: 16px; color: var(--0xtagger-muted); }
+#lookup-result { margin-top: 7px; }
+.lookup-hint { margin: 0; color: var(--0xtagger-muted); font-size: 11px; line-height: 1.35; }
+.lookup-list { display: grid; gap: 2px; }
+.lookup-item { display: grid; width: 100%; padding: 7px 8px; border-radius: 7px; text-align: left; background: transparent; color: var(--0xtagger-ink); }
+.lookup-item:hover,.lookup-item:focus-visible { background: var(--0xtagger-soft); }
+.lookup-item strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.lookup-item small,.scope-row small { color: var(--0xtagger-muted); font-size: 10px; }
+.lookup-more { margin: 6px 0 0; color: var(--0xtagger-muted); font-size: 10px; }
+.lookup-address { display: flex; align-items: center; gap: 4px; margin-bottom: 7px; }
+.lookup-address .reveal { flex: 1; min-width: 0; text-align: left; padding: 5px 0; background: transparent; color: var(--0xtagger-ink); font: 11px ui-monospace, monospace; overflow-wrap: anywhere; }
+.lookup-address .copy { flex: none; padding: 5px; color: var(--0xtagger-muted); }
+.lookup-address .copy svg { display: block; width: 15px; height: 15px; }
+.scope-row { display: flex; align-items: center; gap: 7px; padding: 6px 0; border-top: 1px solid var(--0xtagger-line); }
+.scope-row .tags { flex: 1; min-width: 0; font-size: 12px; font-weight: 700; overflow-wrap: anywhere; }
+.scope-row small { display: block; font-weight: 400; }
+.scope-row button { flex: none; padding: 4px 6px; font-size: 11px; }
+.add-controls { display: flex; gap: 6px; margin-top: 8px; }
+.add-controls select,.add-controls input { min-width: 0; flex: 1; border: 1px solid var(--0xtagger-line); border-radius: 6px; background: var(--0xtagger-soft); color: var(--0xtagger-ink); padding: 6px; font: 11px system-ui, sans-serif; }
+.add-controls button { flex: none; padding: 6px 9px; font-size: 11px; }
+.add-chain { margin-top: 6px; }
+.lookup-error { margin: 5px 0 0; color: var(--0xtagger-warning); font-size: 10px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

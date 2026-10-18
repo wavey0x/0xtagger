@@ -28,6 +28,7 @@ test('500 addresses retain native text, navigation, selection and copying; disab
 test('switching addresses preserves unsaved edits; ranking and Enter save the captured list', async ({ page }) => {
   await start(page);
   await edit(page).click();
+  await expect(page.getByRole('dialog').locator('.save-scope')).toHaveText('All networks');
   await edit(page, 1).click(); // An untouched editor can be replaced.
   await expect(shownAddress(page)).toHaveText(checksumAddress(other));
   await input(page).fill('Unsaved');
@@ -627,6 +628,7 @@ test.describe('a name the website already shows', () => {
   test('saves a name to the network the website was showing', async ({ page }) => {
     await open(page, labelled('row', other, 'Uniswap V3: Router'), [record]);
     await tagFor(page, 'row').click();
+    await expect(page.getByRole('dialog').locator('.save-scope')).toHaveText('Ethereum only');
     await save(page).click();
     await expect.poll(() => page.evaluate(() => window.saves.at(-1)))
       .toMatchObject({ address: other, scope: 'eip155:1' });

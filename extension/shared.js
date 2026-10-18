@@ -1,3 +1,5 @@
+import { scopeName } from './networks.js';
+
 export const MAX_TAGS = 32;
 export const MAX_TAG_LENGTH = 80;
 
@@ -95,6 +97,21 @@ const SOURCE_NAMES = {
   agent: 'Agent',
 };
 export const sourceName = source => SOURCE_NAMES[source] || '';
+
+// Search the same words in the popup and the full book. Presentation and order
+// stay with each view: the book browses alphabetically; the popup is a finder.
+export function searchEntries(records) {
+  return records.map(record => ({
+    record,
+    text: [record.address, ...record.tags, scopeName(record.scope), sourceName(record.source)]
+      .join('\n').toLocaleLowerCase(),
+  }));
+}
+
+export function filterEntries(entries, value) {
+  const query = value.trim().toLocaleLowerCase();
+  return entries.filter(entry => entry.text.includes(query));
+}
 
 // Records carry a source only when they have one, so a record composed by hand
 // is the plain object it has always been.
