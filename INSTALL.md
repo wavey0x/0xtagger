@@ -9,7 +9,7 @@ Use Python 3.10+ and [uv](https://docs.astral.sh/uv/getting-started/installation
 ```sh
 git clone https://github.com/wavey0x/0xtagger.git
 cd 0xtagger
-uv run 0xtagger
+uv run 0xtagger serve
 ```
 
 The first run creates `~/.local/share/0xtagger/tags.sqlite3` and a random access token in `token.txt`. The helper listens on `http://127.0.0.1:8712`. Leave it running or start the same command through your operating system's login-service facility.
@@ -19,10 +19,10 @@ Without uv:
 ```sh
 python3 -m venv .venv
 .venv/bin/pip install .
-.venv/bin/0xtagger
+.venv/bin/0xtagger serve
 ```
 
-On Windows, use `.venv\Scripts\pip` and `.venv\Scripts\0xtagger`.
+On Windows, use `.venv\Scripts\pip` and `.venv\Scripts\0xtagger serve`.
 
 ## Load the extension
 
@@ -41,7 +41,7 @@ New inline tags apply globally. Editing an existing network override retains its
 A book on a server can be reached from more than one device. Run the helper on your machine, or on a remote one behind an HTTPS reverse proxy:
 
 ```sh
-uv run 0xtagger --public-url https://tags.example.com
+uv run 0xtagger serve --public-url https://tags.example.com
 ```
 
 For example, configure Caddy to forward to the helper's loopback listener:
@@ -71,7 +71,7 @@ It uses your Tailscale identity, so its bookmark contains no access key.
 On the server, explicitly allow your Tailscale login and keep the helper bound to loopback:
 
 ```sh
-uv run 0xtagger --public-url https://machine.your-tailnet.ts.net/0xtagger/ \
+uv run 0xtagger serve --public-url https://machine.your-tailnet.ts.net/0xtagger/ \
   --tailscale-login you@example.com
 tailscale serve --bg --https=443 --set-path=/0xtagger/ http://127.0.0.1:8712
 ```
@@ -96,12 +96,55 @@ identity headers grant no access and API clients require the key.
 The installed Python package includes the UI assets. The data directory is never
 served. See [Tailscale Serve identity headers](https://tailscale.com/docs/features/tailscale-serve#identity-headers).
 
+## Look an address up from the terminal
+
+`0xtagger lookup` prints what your own book calls an address. It makes one
+authenticated GET and writes nothing.
+
+```sh
+0xtagger lookup 0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984
+0xtagger lookup --file addresses.txt      # one or more per line, # comments skipped
+0xtagger lookup --find gauge              # search the tags instead
+0xtagger lookup 0x1f98…F984 --chain 1     # prefer this chain's tag
+0xtagger lookup 0x1f98…F984 --json        # machine-readable
+```
+
+Install it so it runs from anywhere, then tell it where your book is:
+
+```sh
+uv tool install --editable .
+mkdir -p ~/.config/0xtagger
+echo '{"book_url": "https://machine.your-tailnet.ts.net/0xtagger"}' > ~/.config/0xtagger/config.json
+```
+
+There is no default book: a book is personal, and the URL belongs on the
+machine rather than in the checkout. `OXTAGGER_BOOK_URL` overrides the file.
+Remote books must be HTTPS; `http://` is accepted only on loopback. Reading
+needs no key where the [Tailscale view](#browse-privately-through-tailscale) is
+configured, because Serve supplies your identity. Elsewhere the book answers
+`401` and the command reports it as unavailable — which is never the same
+answer as an address having no tag.
+
+A future write path will present the book's own token, read from
+`~/.config/0xtagger/token`:
+
+```sh
+install -m 600 /dev/null ~/.config/0xtagger/token   # then paste the token in
+```
+
+That is the same token `token.txt` holds on the server and the extension keeps
+privately, so rotating it means updating the server, this file, and the
+extension's connection. The command reads it internally and never accepts it as
+an argument or prints it; a token file others can read is refused. The browser
+view's Tailscale identity and `Origin` rules stay a browser boundary — a
+command does not supply those for itself.
+
 ## Data and backups
 
 Choose a different port or data directory:
 
 ```sh
-uv run 0xtagger --port 8713 --data-dir /path/to/book
+uv run 0xtagger serve --port 8713 --data-dir /path/to/book
 ```
 
 `OXTAGGER_DATA_DIR` sets the directory, and `OXTAGGER_TOKEN` supplies a token instead of `token.txt`. Restart the helper after changing its token and update that connection in the popup. Keep credentials and books outside the checkout.

@@ -10,7 +10,7 @@ requires-python = ">=3.10"
 dependencies = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1"]
 
 [project.scripts]
-0xtagger = "server:main"
+0xtagger = "oxtagger_cli:main"
 
 [project.urls]
 Source = "https://github.com/wavey0x/0xtagger"
@@ -24,7 +24,7 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-py-modules = ["server"]
+py-modules = ["server", "oxtagger_cli"]
 packages = ["oxtagger_ui"]
 include-package-data = false
 

@@ -31,7 +31,7 @@ git clone https://github.com/wavey0x/0xtagger.git
 Run a server, with Python 3.10+ and [uv](https://docs.astral.sh/uv/getting-started/installation/):
 
 ```sh
-uv run 0xtagger
+uv run 0xtagger serve
 ```
 
 Open the address book menu → **Connect to a server**, then paste the link the server prints.
