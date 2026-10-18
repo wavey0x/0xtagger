@@ -462,7 +462,7 @@ test('popup finder searches, copies and adds an address in a chosen scope', asyn
     await popup.getByRole('combobox', { name: 'Where new tags apply' }).selectOption('eip155:8453');
     await popup.getByRole('button', { name: 'Add tags' }).click();
     await expect(popup.locator('#home')).toBeHidden();
-    await expect(popup.locator('#editor-host .save-scope')).toHaveText('Base only');
+    await expect(popup.locator('#editor-host .save-scope')).toHaveText('Base');
     await popup.getByRole('textbox', { name: 'Tag 1' }).fill('Base payroll');
     await popup.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(popup.locator('#home')).toBeVisible();
@@ -477,6 +477,8 @@ test('popup finder searches, copies and adds an address in a chosen scope', asyn
 
     await lookup.fill('payroll');
     await expect(popup.locator('.lookup-item')).toHaveCount(1);
+    await expect(popup.locator('.lookup-item'))
+      .toHaveAccessibleName(/^Base payroll, Base, 0x.+, Show address details$/);
     await popup.locator('.lookup-copy').click();
     await expect(popup.getByRole('button', { name: `Copied ${display}` })).toBeVisible();
     await lookup.press('ArrowDown');
@@ -484,6 +486,8 @@ test('popup finder searches, copies and adds an address in a chosen scope', asyn
     await popup.locator('.lookup-item').press('Enter');
     await expect(lookup).toHaveValue(display);
     await expect(popup.locator('#lookup-result .lookup-item')).toContainText('Base');
+    await expect(popup.locator('#lookup-result .lookup-item'))
+      .toHaveAccessibleName('Base payroll, Base, Edit tags');
 
     const addGlobal = await popup.evaluate(async at => {
       const state = (await chrome.runtime.sendMessage({ type: 'State' })).result.state;
@@ -498,13 +502,13 @@ test('popup finder searches, copies and adds an address in a chosen scope', asyn
     await expect(popup.locator('#lookup-result .lookup-item').first()).toContainText('Everywhere');
     await expect(popup.locator('#lookup-result .lookup-item').first()).toContainText('Other networks');
     await expect(popup.locator('#lookup-result .lookup-item').nth(1)).toContainText('Base payroll');
-    await expect(popup.locator('#lookup-result .lookup-item').nth(1)).toContainText('Base only');
+    await expect(popup.locator('#lookup-result .lookup-item').nth(1).locator('small')).toHaveText('Base');
     await expect(popup.locator('#lookup-result .more-count')).toHaveText('+1');
     await popup.locator('#lookup-result .lookup-item').first().click();
     await expect(popup.locator('#editor-host .save-scope')).toHaveText('All networks');
     await popup.getByRole('button', { name: 'Close editor' }).click();
     await popup.locator('#lookup-result .lookup-item').nth(1).click();
-    await expect(popup.locator('#editor-host .save-scope')).toHaveText('Base only');
+    await expect(popup.locator('#editor-host .save-scope')).toHaveText('Base');
     await popup.getByRole('button', { name: 'Close editor' }).click();
     await lookup.fill('Universal');
     await expect(popup.locator('#lookup-result .lookup-item')).toHaveCount(1);
@@ -522,7 +526,7 @@ test('popup finder searches, copies and adds an address in a chosen scope', asyn
     await expect(popup.locator('.lookup-error')).toContainText('known network');
     await popup.getByRole('textbox', { name: 'Chain ID' }).fill('42170');
     await popup.getByRole('button', { name: 'Add tags' }).click();
-    await expect(popup.locator('#editor-host .save-scope')).toHaveText('Chain 42170 only');
+    await expect(popup.locator('#editor-host .save-scope')).toHaveText('Chain 42170');
     await popup.getByRole('textbox', { name: 'Tag 1' }).fill('Custom chain');
     await popup.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(popup.locator('#lookup-result .lookup-item')).toContainText('Chain 42170');

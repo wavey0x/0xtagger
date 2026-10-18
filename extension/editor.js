@@ -84,7 +84,7 @@ export function createEditor(container, { address, scope = 'global', state, save
   if (modal) panel.showModal();
   const get = selector => panel.querySelector(selector);
   get('code').textContent = displayAddress;
-  get('.save-scope').textContent = scope === 'global' ? 'All networks' : `${scopeName(scope)} only`;
+  get('.save-scope').textContent = scopeName(scope);
   const origin = modal && own?.source ? `Source: ${sourceName(own.source)}` : '';
   get('.source').textContent = [bookName, origin].filter(Boolean).join(' · ');
   get('.source').title = [bookName ? `Saving to ${bookName}` : 'Saving to your address book', origin].filter(Boolean).join(' · ');

@@ -69,8 +69,8 @@ function renderExact(address, output) {
     for (const record of found) {
       group.append(resultRow(record, {
         others: record.tags.length - 1,
-        scope: record.scope === 'global' ? (found.length > 1 ? 'Other networks' : 'All networks') : `${scopeName(record.scope)} only`,
-        action: 'Edit',
+        scope: record.scope === 'global' ? (found.length > 1 ? 'Other networks' : 'All networks') : scopeName(record.scope),
+        action: 'Edit tags',
         open: () => edit(address, record.scope),
       }));
     }
@@ -146,7 +146,8 @@ function resultRow(record, { name = record.tags[0], others = 0, address = '', no
     item.append(icon);
   }
   item.setAttribute('aria-label',
-    [action, name, note, scope, others > 0 ? `and ${others} more` : '', address].filter(Boolean).join(', '));
+    [name, note, scope, others > 0 ? `and ${others} more` : '', address, action || 'Show address details']
+      .filter(Boolean).join(', '));
   item.onclick = open;
   item.onkeydown = event => {
     if (event.key === 'Escape') { event.preventDefault(); $('#lookup').focus(); }
@@ -219,7 +220,7 @@ function renderFinder() {
     const name = matchedName(record, query);
     const where = record.scope === 'global'
       ? ((recordsByAddress.get(record.address)?.length || 0) > 1 ? 'Other networks' : 'All networks')
-      : `${scopeName(record.scope)} only`;
+      : scopeName(record.scope);
     list.append(resultRow(record, {
       name,
       others: record.tags.length - 1,

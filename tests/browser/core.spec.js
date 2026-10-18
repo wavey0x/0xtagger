@@ -628,7 +628,7 @@ test.describe('a name the website already shows', () => {
   test('saves a name to the network the website was showing', async ({ page }) => {
     await open(page, labelled('row', other, 'Uniswap V3: Router'), [record]);
     await tagFor(page, 'row').click();
-    await expect(page.getByRole('dialog').locator('.save-scope')).toHaveText('Ethereum only');
+    await expect(page.getByRole('dialog').locator('.save-scope')).toHaveText('Ethereum');
     await save(page).click();
     await expect.poll(() => page.evaluate(() => window.saves.at(-1)))
       .toMatchObject({ address: other, scope: 'eip155:1' });

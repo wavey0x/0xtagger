@@ -3,9 +3,10 @@
    wash sits under the glass rather than in it, and reads through. */
 body { width: 320px; padding: 10px; background: radial-gradient(ellipse at top left, var(--0xtagger-accent-wash), transparent 70%), var(--0xtagger-canvas); }
 /* Which book, and how fresh: context under the work, not a banner over it. */
-.book-line { display: flex; align-items: center; gap: 8px; margin-top: 11px; }
-.book-line #location { min-width: 0; }
-#sync { font-size: 10px; white-space: nowrap; }
+.book-line { display: grid; gap: 3px; margin-top: 11px; }
+.book-line #location { min-width: 0; width: 100%; }
+#sync { margin-left: 10px; font-size: 10px; line-height: 1.2; }
+#sync:empty { display: none; }
 #sync[data-offline="true"] { color: var(--0xtagger-warning); }
 .site { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--0xtagger-line); }
 /* The hostname beside its switch says what the row is for; a heading over it
@@ -39,11 +40,11 @@ body { width: 320px; padding: 10px; background: radial-gradient(ellipse at top l
 .lookup-detail .lookup-row + .lookup-row { border-top: 1px solid var(--0xtagger-line); }
 .lookup-row { display: flex; align-items: center; border-radius: 7px; }
 .lookup-row:hover,.lookup-row:focus-within { background: var(--0xtagger-soft); }
-.lookup-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; flex: 1; min-width: 0; padding: 7px 8px; border-radius: 7px; text-align: left; background: transparent; color: var(--0xtagger-ink); }
+.lookup-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; flex: 1; min-width: 0; padding: 7px 8px; border-radius: 7px; text-align: left; background: transparent; color: var(--0xtagger-ink); font-weight: 400; }
 .lookup-name { display: flex; align-items: baseline; gap: 5px; min-width: 0; }
-.lookup-name strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }
+.lookup-name strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 500; }
 .more-count { flex: none; color: var(--0xtagger-muted); font-size: 10px; font-weight: 500; }
-.lookup-item small { display: block; grid-column: 1; min-width: 0; color: var(--0xtagger-muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lookup-item small { display: block; grid-column: 1; min-width: 0; color: var(--0xtagger-muted); font-size: 10px; font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lookup-item small .hex { font-family: ui-monospace, monospace; }
 .lookup-action { grid-column: 2; grid-row: 1 / span 2; align-self: center; padding-left: 8px; color: var(--0xtagger-muted); }
 .lookup-action svg { width: 14px; height: 14px; }
