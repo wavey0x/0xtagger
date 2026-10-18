@@ -209,18 +209,27 @@ def create_app(database: str | Path, token: str, *, tailscale_login: str | None 
             rows = connection.execute("SELECT * FROM tags ORDER BY scope, address").fetchall()
         return JSONResponse({"records": [record(row) for row in rows]}, headers={"ETag": mark})
 
-    def apply(connection: sqlite3.Connection, address: str, scope: str, change: TagWrite) -> dict | None:
-        """Write one record inside a transaction the caller owns."""
-        if not change.tags:
+    def apply(connection: sqlite3.Connection, address: str, scope: str,
+              tags: list[str], source_on_create: str | None) -> dict | None:
+        """Write one record inside a transaction the caller owns.
+
+        It takes the tags themselves rather than a request model, because an
+        addition's list is partly the book's own: rebuilding a validated model
+        from stored tags would re-judge them by today's rules, and a record
+        written under older ones would raise here instead of being appended to.
+        Safety on this path comes from the caller's BEGIN IMMEDIATE, not from
+        a version carried in a model, so none is passed.
+        """
+        if not tags:
             connection.execute("DELETE FROM tags WHERE address = ? AND scope = ?", (address, scope))
             return None
         # A record's origin is settled when it is created. An existing record
         # without a source stays without one, including on later edits.
         current = held(connection, address, scope)
-        source = current["source"] if current is not None else change.source
+        source = current["source"] if current is not None else source_on_create
         saved = {
             "address": address, "scope": scope,
-            "tags": change.tags, "version": secrets.token_hex(16),
+            "tags": tags, "version": secrets.token_hex(16),
             **({"source": source} if source else {}),
         }
         connection.execute(
@@ -228,7 +237,7 @@ def create_app(database: str | Path, token: str, *, tailscale_login: str | None 
             # `source` above is the source from creation, even when it is NULL.
             "ON CONFLICT(address, scope) DO UPDATE SET "
             "tags_json=excluded.tags_json, version=excluded.version, source=excluded.source",
-            (address, scope, json.dumps(change.tags, ensure_ascii=False), saved["version"], source),
+            (address, scope, json.dumps(tags, ensure_ascii=False), saved["version"], source),
         )
         return saved
 
@@ -258,7 +267,7 @@ def create_app(database: str | Path, token: str, *, tailscale_login: str | None 
                         "detail": "Saved elsewhere while you were editing.",
                         "current": record(current),
                     })
-                saved = apply(connection, address, scope, change)
+                saved = apply(connection, address, scope, change.tags, change.source)
                 mark = bump(connection)
             return JSONResponse({"record": saved}, headers={"ETag": f'"{mark}"'})
 
@@ -293,7 +302,8 @@ def create_app(database: str | Path, token: str, *, tailscale_login: str | None 
                         "detail": "Saved elsewhere while this file was being added.",
                         "conflicts": conflicts,
                     })
-                saved = [apply(connection, address, scope, change) for address, scope, change in changes]
+                saved = [apply(connection, address, scope, change.tags, change.source)
+                         for address, scope, change in changes]
                 # A batch carrying nothing changes nothing, including the
                 # number that tells every reader the book moved.
                 mark = bump(connection) if changes else revision_of(connection)
@@ -343,9 +353,7 @@ def create_app(database: str | Path, token: str, *, tailscale_login: str | None 
                 changed = False
                 for address, scope, item, current, tags, added, already_present in staged:
                     if added:
-                        saved = apply(connection, address, scope, TagWrite(
-                            tags=tags + added, version=current["version"] if current else None,
-                            source=item.source))
+                        saved = apply(connection, address, scope, tags + added, item.source)
                         changed = True
                     else:
                         saved = record(current)

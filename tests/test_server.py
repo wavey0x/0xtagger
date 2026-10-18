@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+import json
 
 from fastapi.testclient import TestClient
 import pytest
@@ -316,6 +317,26 @@ def test_a_source_is_settled_when_a_record_is_created(book):
     second = put(book, ['Our treasury'], version=first['version'], source='etherscan:page')
     assert second.json()['record']['source'] == 'safe:address-book'
     assert book.get('/tags').json()['records'][0]['source'] == 'safe:address-book'
+
+
+def test_an_addition_appends_to_a_record_todays_rules_would_refuse(book, tmp_path):
+    """A record's own tags are the book's, not the request's. Rebuilding a
+    validated model from them would re-judge a record written under older
+    rules and fail the append instead of making it."""
+    import sqlite3
+
+    put(book, ['Fine'])
+    held = sqlite3.connect(tmp_path / 'book.sqlite3')
+    with held:
+        held.execute('UPDATE tags SET tags_json = ?', (json.dumps(['x' * 120]),))
+    held.close()
+
+    answer = book.post('/tags', json={'additions': [
+        {'address': ADDRESS, 'scope': 'global', 'tags': ['Added']}]})
+    assert answer.status_code == 200
+    assert answer.json()['results'][0]['added_tags'] == ['Added']
+    # The stored tag is preserved exactly, not re-validated and not rewritten.
+    assert book.get('/tags').json()['records'][0]['tags'] == ['x' * 120, 'Added']
 
 
 def test_a_record_without_a_source_does_not_acquire_one_on_edit(book):
