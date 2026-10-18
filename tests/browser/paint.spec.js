@@ -53,7 +53,11 @@ test('tagging a creator leaves the site icon on its row', async ({ page }) => {
   expect(original.width).toBeGreaterThan(0);
   await tag(page, 'C2tP');
   await expect(page.locator('#creator')).toHaveAttribute('data-0xtagger-tag', 'C2tP');
-  expect((await ink(page, clip, true)).bottom).toBe(original.bottom);
+  const painted = await ink(page, clip, true);
+  expect(painted.bottom).not.toBeNull();
+  // A one-device-pixel antialiasing shift can change the ink edge; moving the
+  // icon onto another line is much larger than this tolerance.
+  expect(Math.abs(painted.bottom - original.bottom)).toBeLessThan(1);
 });
 
 // Modelled on the inner-span To cell at

@@ -1,3 +1,10 @@
 <!doctype html><html lang="en"><meta charset="utf-8"><title>Embedded addresses</title>
 <main><a id="wallet" href="#wallet">0xabababababababababababababababababababab</a><button id="copy">Copy address</button></main>
-<script>document.querySelector('#copy').onclick=()=>navigator.clipboard.writeText(document.querySelector('#wallet').textContent);</script></html>
+<script>
+const copy = document.querySelector('#copy');
+copy.onclick = async () => {
+  const address = document.querySelector('#wallet').textContent;
+  await navigator.clipboard.writeText(address);
+  copy.dataset.copied = address;
+};
+</script></html>

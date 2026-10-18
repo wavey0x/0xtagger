@@ -208,9 +208,11 @@ test('installed extension: a book that works with no setup, moving it to a serve
     await embedded.getByRole('textbox', { name: 'Tag 1' }).press('Enter');
     await expect(website.locator('#wallet')).toHaveAttribute('data-0xtagger-tag', 'Local edited');
     await embedded.locator('#copy').click();
+    await expect(embedded.locator('#copy')).toHaveAttribute('data-copied', address);
     expect(await website.evaluate(() => navigator.clipboard.readText())).toBe(address);
     expect((await (await api.get(remote+'/tags')).json()).records).toEqual([]);
     await website.locator('#copy').click();
+    await expect(website.locator('#copy')).toHaveAttribute('data-copied', address);
     expect(await website.evaluate(async address=>(await navigator.clipboard.readText())===address,address)).toBe(true);
 
     const another = await context.newPage();
