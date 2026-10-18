@@ -1,4 +1,4 @@
-import { filterEntries, hostPermission, normalizeScope, parseAddress, searchEntries } from './shared.js';
+import { filterEntries, hostPermission, normalizeScope, parseAddress, searchEntries, sourceName } from './shared.js';
 import { $, rpc, emptyState, currentSnapshot, syncText, bookPicker, connectForm, watchBook, tooltips } from './ui.js';
 import { networks, scopeName } from './networks.js';
 import { checksumAddress } from './checksum.js';
@@ -68,9 +68,7 @@ function renderExact(address, output) {
   reveal.setAttribute('aria-label', revealed ? 'Hide full address' : `Show full address ${display}`);
   reveal.setAttribute('aria-expanded', String(revealed));
   reveal.onclick = () => { revealed = !revealed; renderFinder(); $('#lookup-result .reveal').focus(); };
-  const copy = node('button', 'quiet copy');
-  copy.type = 'button'; copy.innerHTML = COPY_ICON;
-  copy.setAttribute('aria-label', `Copy ${display}`);
+  const copy = copyButton(display);
   copy.onclick = async () => {
     try { await navigator.clipboard.writeText(display); confirmCopied(copy, `Copied ${display}`); }
     catch {
@@ -83,10 +81,16 @@ function renderExact(address, output) {
   };
   line.append(reveal, copy);
   if (found.length) {
-    // The name it goes by, not every name it has. The rest are a count, and
-    // the editor is where they are read and changed.
-    const others = found.reduce((count, record) => count + record.tags.length, 0) - 1;
-    output.append(resultRow(found[0], { others, open: () => edit(address, found[0].scope) }), line);
+    // One row per scope, because each is its own record with its own editor.
+    // Within a row, the name it goes by and a count of its others — those the
+    // editor opens. A count never stands for a record this row cannot reach.
+    for (const record of found) {
+      output.append(resultRow(record, {
+        others: record.tags.length - 1,
+        open: () => edit(address, record.scope),
+      }));
+    }
+    output.append(line);
     return;
   }
   output.append(line);
@@ -117,7 +121,26 @@ function renderExact(address, output) {
   controls.append(select, add); output.append(controls, chain, error);
 }
 
-function resultRow(record, { others = 0, address = '', open }) {
+function copyButton(display, className = 'quiet copy') {
+  const copy = node('button', className);
+  copy.type = 'button'; copy.innerHTML = COPY_ICON;
+  copy.setAttribute('aria-label', `Copy ${display}`);
+  return copy;
+}
+
+function matchedOn(record, query) {
+  // The name shown already answers for itself; this is for the rest.
+  if (!query || record.tags[0].toLocaleLowerCase().includes(query)) return '';
+  const tag = record.tags.slice(1).find(value => value.toLocaleLowerCase().includes(query));
+  if (tag) return tag;
+  if (record.source && sourceName(record.source).toLocaleLowerCase().includes(query)) {
+    return sourceName(record.source);
+  }
+  return '';
+}
+
+function resultRow(record, { others = 0, address = '', note = '', open }) {
+  const row = node('div', 'lookup-row');
   const item = node('button', 'lookup-item');
   item.type = 'button';
   const head = node('span', 'lookup-name');
@@ -127,10 +150,19 @@ function resultRow(record, { others = 0, address = '', open }) {
   const where = record.scope === 'global' ? '' : scopeName(record.scope);
   if (others > 0) head.append(node('span', 'more-count', `+${others}`));
   item.append(head);
-  const under = [address, where].filter(Boolean).join(' · ');
-  if (under) item.append(node('small', '', under));
+  if (address || note || where) {
+    const under = node('small');
+    // The address is read character by character; the words beside it are not.
+    if (address) under.append(node('span', 'hex', address));
+    for (const part of [note, where].filter(Boolean)) {
+      if (under.childNodes.length) under.append(' · ');
+      under.append(part);
+    }
+    item.append(under);
+  }
   item.setAttribute('aria-label',
-    [record.tags[0], others > 0 ? `and ${others} more` : '', where, address].filter(Boolean).join(', '));
+    [record.tags[0], note ? `matching ${note}` : '', others > 0 ? `and ${others} more` : '',
+     where, address].filter(Boolean).join(', '));
   item.onclick = open;
   item.onkeydown = event => {
     if (event.key === 'Escape') { event.preventDefault(); $('#lookup').focus(); }
@@ -140,7 +172,17 @@ function resultRow(record, { others = 0, address = '', open }) {
       items[Math.max(0, Math.min(items.length - 1, items.indexOf(item) + (event.key === 'ArrowDown' ? 1 : -1)))].focus();
     }
   };
-  return item;
+  row.append(item);
+  if (address) {
+    const display = checksumAddress(record.address);
+    const copy = copyButton(display, 'quiet lookup-copy');
+    copy.onclick = async () => {
+      try { await navigator.clipboard.writeText(display); confirmCopied(copy, `Copied ${display}`); }
+      catch { tell('Copy was refused. Open the address to copy it.'); }
+    };
+    row.append(copy);
+  }
+  return row;
 }
 
 function popupRank(entry, query) {
@@ -185,14 +227,15 @@ function renderFinder() {
     list.append(resultRow(record, {
       others: record.tags.length - 1,
       address: shortAddress(checksumAddress(record.address)),
+      note: matchedOn(record, query),
       open: () => { input.value = checksumAddress(record.address); revealed = false; renderFinder(); $('#lookup-result .reveal').focus(); },
     }));
   }
   output.append(list);
   if (matches.length > 5) {
     // A way to the rest, rather than a sentence about there being more.
-    const more = node('button', 'lookup-more', `${matches.length - 5} more`);
-    more.type = 'button'; more.onclick = openBook;
+    const more = node('button', 'quiet lookup-more', `${matches.length - 5} more`);
+    more.type = 'button'; more.onclick = () => openBook(value);
     output.append(more);
   }
 }
@@ -242,11 +285,17 @@ function render(next = state) {
   if (offers) $('#import-site').textContent = `Import names from ${health.adapter}`;
   renderFinder();
 }
-async function openBook() {
-  const url = chrome.runtime.getURL('book.html');
-  const [book] = await chrome.runtime.getContexts({ contextTypes: ['TAB'], documentUrls: [url] });
+async function openBook(query = '') {
+  const page = chrome.runtime.getURL('book.html');
+  // The book opens on what was being searched, so "19 more" means these
+  // nineteen rather than everything.
+  const url = query ? `${page}?q=${encodeURIComponent(query)}` : page;
+  // documentUrls matches whole URLs, and this one may carry a query, so the
+  // book tab is found by its page rather than by a pattern.
+  const open = await chrome.runtime.getContexts({ contextTypes: ['TAB'] });
+  const book = open.find(context => context.documentUrl?.startsWith(page));
   if (book) {
-    await chrome.tabs.update(book.tabId, { active: true });
+    await chrome.tabs.update(book.tabId, { active: true, ...(query ? { url } : {}) });
     await chrome.windows.update(book.windowId, { focused: true });
   } else await chrome.tabs.create({ url });
 }

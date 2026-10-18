@@ -30,17 +30,24 @@ body { width: 320px; padding: 10px; background: radial-gradient(ellipse at top l
 #lookup-clear { flex: none; padding: 3px 9px; font-size: 16px; color: var(--0xtagger-muted); }
 #lookup-result { margin-top: 7px; }
 .lookup-hint { margin: 0; color: var(--0xtagger-muted); font-size: 11px; line-height: 1.35; }
-.lookup-list { display: grid; gap: 2px; }
-/* One row per address: the name it goes by, and how many others it has. */
-.lookup-item { display: grid; gap: 1px; width: 100%; padding: 7px 8px; border-radius: 7px; text-align: left; background: transparent; color: var(--0xtagger-ink); }
-.lookup-item:hover,.lookup-item:focus-visible { background: var(--0xtagger-soft); }
-.lookup-name { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.lookup-name strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
-.more-count { flex: none; padding: 1px 5px; border-radius: 999px; background: var(--0xtagger-soft); color: var(--0xtagger-muted); font-size: 10px; font-weight: 650; }
-.lookup-item:hover .more-count,.lookup-item:focus-visible .more-count { background: var(--0xtagger-canvas); }
-.lookup-item small { color: var(--0xtagger-muted); font-size: 10px; }
+.lookup-list { display: grid; gap: 1px; }
+/* One row per address: the name it goes by, and how many others it has. A
+   name is a label, not a headline, so it is set in the reading weight. */
+.lookup-row { display: flex; align-items: center; border-radius: 7px; }
+.lookup-row:hover,.lookup-row:focus-within { background: var(--0xtagger-soft); }
+.lookup-item { display: grid; gap: 0; flex: 1; min-width: 0; padding: 5px 8px; border-radius: 7px; text-align: left; background: transparent; color: var(--0xtagger-ink); }
+.lookup-name { display: flex; align-items: baseline; gap: 5px; min-width: 0; }
+.lookup-name strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 500; }
+.more-count { flex: none; color: var(--0xtagger-muted); font-size: 10px; font-weight: 500; }
+.lookup-item small { display: block; min-width: 0; color: var(--0xtagger-muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lookup-item small .hex { font-family: ui-monospace, monospace; }
+/* Looking a name up is usually a prelude to pasting the address somewhere.
+   The room is always reserved, so no row moves when one appears. */
+.lookup-copy { flex: none; padding: 4px 6px; color: var(--0xtagger-muted); opacity: 0; }
+.lookup-row:hover .lookup-copy,.lookup-row:focus-within .lookup-copy { opacity: 1; }
+.lookup-copy svg { width: 14px; height: 14px; }
 /* A way to the rest, not a sentence about there being more. */
-.lookup-more { display: block; width: 100%; margin-top: 2px; padding: 6px 8px; border-radius: 7px; text-align: left; color: var(--0xtagger-muted); font-size: 10px; font-weight: 600; }
+.lookup-more { display: block; width: 100%; margin-top: 2px; padding: 5px 8px; border-radius: 7px; text-align: left; color: var(--0xtagger-muted); font-size: 10px; font-weight: 600; }
 .lookup-more:hover,.lookup-more:focus-visible { color: var(--0xtagger-accent); background: var(--0xtagger-accent-hover); }
 .lookup-address { display: flex; align-items: center; gap: 4px; padding-left: 8px; }
 .lookup-address .reveal { flex: 1; min-width: 0; text-align: left; padding: 5px 0; background: transparent; color: var(--0xtagger-ink); font: 11px ui-monospace, monospace; overflow-wrap: anywhere; }

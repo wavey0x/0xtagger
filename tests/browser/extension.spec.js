@@ -491,10 +491,12 @@ test('popup finder searches, copies and adds an address in a chosen scope', asyn
       } });
     }, address);
     expect(addGlobal.ok, addGlobal.error).toBe(true);
-    // One row: the name it goes by, with the others behind a count.
-    await expect(popup.locator('#lookup-result .lookup-item')).toHaveCount(1);
-    await expect(popup.locator('#lookup-result .lookup-item')).toContainText('Everywhere');
-    await expect(popup.locator('#lookup-result .more-count')).toHaveText('+1');
+    // A scope is its own record with its own editor, so it gets its own row;
+    // a count only ever stands for other names on the row it sits in.
+    await expect(popup.locator('#lookup-result .lookup-item')).toHaveCount(2);
+    await expect(popup.locator('#lookup-result .lookup-item').first()).toContainText('Everywhere');
+    await expect(popup.locator('#lookup-result .lookup-item').nth(1)).toContainText('Base payroll');
+    await expect(popup.locator('#lookup-result .more-count')).toHaveCount(0);
 
     const custom = '0x' + '12'.repeat(20);
     await lookup.fill(custom);
@@ -508,6 +510,32 @@ test('popup finder searches, copies and adds an address in a chosen scope', asyn
     await popup.getByRole('textbox', { name: 'Tag 1' }).fill('Custom chain');
     await popup.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(popup.locator('#lookup-result .lookup-item')).toContainText('Chain 42170');
+
+    // "N more" is a way to the rest of these matches, not to the whole book.
+    const seeded = await popup.evaluate(async () => {
+      const state = (await chrome.runtime.sendMessage({ type: 'State' })).result.state;
+      for (let index = 0; index < 6; index += 1) {
+        const at = '0x' + String(index).repeat(40);
+        const done = await chrome.runtime.sendMessage({ type: 'Save', draft: {
+          book: state.activeBook, address: at, scope: 'global', tags: [`Vault ${index}`], version: null } });
+        if (!done.ok) return done;
+      }
+      return { ok: true };
+    });
+    expect(seeded.ok, seeded.error).toBe(true);
+    await lookup.fill('vault');
+    const more = popup.getByRole('button', { name: /more$/ });
+    await expect(more).toHaveText('1 more');
+    await more.click();
+    await expect.poll(async () => {
+      const opened = context.pages().find(page => page.url().startsWith(`chrome-extension://${id}/book.html`));
+      return opened ? opened.locator('#search').inputValue() : null;
+    }).toBe('vault');
+    const bookTab = context.pages().find(page => page.url().startsWith(`chrome-extension://${id}/book.html`));
+    await bookTab.close();
+    await popup.bringToFront();
+    // Leave the field as the custom-chain address the next step reads.
+    await lookup.fill(custom);
 
     const switched = await popup.evaluate(async () => {
       const added = await chrome.runtime.sendMessage({ type: 'AddBook', name: 'Other', storage: { kind: 'device' } });

@@ -400,6 +400,9 @@ try {
   await readPending();
 } catch (error) { render(); tell(error); }
 finally {
+  // Opened from the popup's "19 more": the book lands on those nineteen.
+  const asked = new URLSearchParams(location.search).get('q');
+  if (asked) { $('#search').value = asked; search(); }
   $('.book').hidden = false;
   $('#search').focus({ preventScroll: true });
 }
