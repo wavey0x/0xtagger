@@ -98,8 +98,9 @@ served. See [Tailscale Serve identity headers](https://tailscale.com/docs/featur
 
 ## Look an address up from the terminal
 
-`0xtagger lookup` prints what your own book calls an address. It makes one
-authenticated GET and writes nothing.
+`0xtagger lookup` prints what your own book calls an address and writes nothing.
+It reads without a key first, then retries once with the book's token only if
+the book answers `401`.
 
 ```sh
 0xtagger lookup 0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984
@@ -119,11 +120,12 @@ echo '{"book_url": "https://machine.your-tailnet.ts.net/0xtagger"}' > ~/.config/
 
 There is no default book: a book is personal, and the URL belongs on the
 machine rather than in the checkout. `OXTAGGER_BOOK_URL` overrides the file.
-Remote books must be HTTPS; `http://` is accepted only on loopback. Reading
-needs no key where the [Tailscale view](#browse-privately-through-tailscale) is
-configured, because Serve supplies your identity. Elsewhere the book answers
-`401` and the command reports it as unavailable — which is never the same
-answer as an address having no tag.
+Remote books must be HTTPS; `http://` is accepted only on loopback. The
+[Tailscale view](#browse-privately-through-tailscale) supplies your identity,
+so its reads stay keyless. For a book that requires a token, set
+`OXTAGGER_TOKEN` or keep it in `~/.config/0xtagger/token` as described below.
+The command reads it internally. If the book cannot be read, lookup reports
+it as unavailable — never as an address having no tag.
 
 ## Record a name from the terminal
 

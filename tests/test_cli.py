@@ -151,6 +151,14 @@ def test_a_snapshot_it_can_read_is_reported(served, capsys):
     assert 'Treasury' in capsys.readouterr().out
 
 
+def test_a_keyless_read_does_not_consult_an_insecure_token_file(served, capsys):
+    configure(book_url=served({'records': [
+        {'address': ADDRESS, 'scope': 'global', 'tags': ['Treasury']}]}))
+    keep_token(mode=0o644)
+    assert cli.lookup([ADDRESS]) == 0
+    assert 'Treasury' in capsys.readouterr().out
+
+
 def test_a_url_that_cannot_be_parsed_is_a_misconfiguration_not_an_outage():
     """Reported as bad configuration, exit 1, rather than left to fail later as
     an unreachable book — and never with a traceback."""
@@ -270,6 +278,48 @@ def book(monkeypatch, tmp_path):
     keep_token()
     client.sent = sent
     return client
+
+
+def test_lookup_retries_a_default_local_book_once_with_the_token(book, capsys):
+    saved = book.put(f'/tags/global/{ADDRESS}',
+                     headers={'Authorization': f'Bearer {TOKEN}'},
+                     json={'tags': ['Treasury'], 'version': None})
+    assert saved.status_code == 200
+    assert cli.lookup([ADDRESS]) == 0
+    assert 'Treasury' in capsys.readouterr().out
+    assert book.sent == [
+        ('GET', {}), ('GET', {'Authorization': f'Bearer {TOKEN}'})]
+
+
+def test_lookup_without_a_token_explains_the_401_without_an_address_answer(book, capsys):
+    (cli.config_home() / 'token').unlink()
+    assert cli.lookup([ADDRESS, '--json']) == 2
+    printed = capsys.readouterr()
+    assert str(cli.config_home() / 'token') in printed.err
+    assert 'requires a token' in printed.err
+    assert 'results' not in json.loads(printed.out)
+    assert book.sent == [('GET', {})]
+
+
+def test_lookup_refuses_an_insecure_token_only_after_a_401(book):
+    (cli.config_home() / 'token').chmod(0o644)
+    with pytest.raises(SystemExit) as refused:
+        cli.lookup([ADDRESS])
+    assert 'readable by others' in str(refused.value)
+    assert TOKEN not in str(refused.value)
+    assert book.sent == [('GET', {})]
+
+
+def test_lookup_stops_after_a_rejected_token(book, monkeypatch, capsys):
+    wrong = 'test-only-wrong-token'
+    monkeypatch.setenv('OXTAGGER_TOKEN', wrong)
+    assert cli.lookup([ADDRESS, '--json']) == 2
+    printed = capsys.readouterr()
+    assert 'book answered 401' in printed.err
+    assert 'results' not in json.loads(printed.out)
+    assert wrong not in printed.out + printed.err
+    assert book.sent == [
+        ('GET', {}), ('GET', {'Authorization': f'Bearer {wrong}'})]
 
 
 def held(book):
@@ -520,6 +570,46 @@ def test_the_real_transport_sends_bearer_auth_and_no_origin(monkeypatch, capsys)
     # The token appears in no output of its own.
     printed = capsys.readouterr()
     assert TOKEN not in printed.out and TOKEN not in printed.err
+
+
+@pytest.mark.parametrize('refusal', [b'', b'<html>Authorization required</html>'])
+def test_a_non_json_401_still_retries_with_the_token(refusal, capsys):
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    seen = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            seen.append((self.path, self.headers.get('Authorization')))
+            if self.headers.get('Authorization') == f'Bearer {TOKEN}':
+                status = 200
+                payload = json.dumps({'records': [
+                    {'address': ADDRESS, 'scope': 'global', 'tags': ['Treasury']}]}).encode()
+            else:
+                status, payload = 401, refusal
+            self.send_response(status)
+            self.send_header('Content-Type', 'application/json' if status == 200 else 'text/html')
+            self.send_header('Content-Length', str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, *args):
+            pass
+
+    httpd = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        configure(book_url=f'http://127.0.0.1:{httpd.server_address[1]}')
+        keep_token()
+        assert cli.lookup([ADDRESS]) == 0
+    finally:
+        httpd.shutdown()
+
+    assert seen == [('/tags', None), ('/tags', f'Bearer {TOKEN}')]
+    printed = capsys.readouterr()
+    assert 'Treasury' in printed.out
+    assert TOKEN not in printed.out + printed.err
 
 
 def test_a_redirect_is_not_followed():

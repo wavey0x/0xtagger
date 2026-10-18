@@ -4,8 +4,9 @@ Dispatch is standard-library only and the server is imported inside `serve`
 alone, because a lookup is the frequent operation and must not pay for a web
 framework it never uses.
 
-`lookup` makes one GET and writes nothing. `add` presents the bearer token
-`write_token()` resolves and creates names only where none already stand.
+`lookup` makes a keyless GET and retries once with the configured token only
+on 401. `add` presents the bearer token `write_token()` resolves and creates
+names only where none already stand.
 
 A book that cannot be read is reported as unavailable and never as an address
 having no tag. Those are different answers and conflating them is how a
@@ -130,12 +131,11 @@ def book_url() -> str:
     raise Unconfigured(f"{raw} is not https, or http on loopback")
 
 
-def write_token() -> str:
-    """The bearer token a write presents: the same one the extension holds.
+def configured_token() -> str | None:
+    """The book's bearer token, if configured. Never printed or logged.
 
-    Read internally and never printed, never an argument, never logged. The
-    identity path the private browser view uses is a browser boundary — its
-    `Origin` rule is not a credential for a command to supply for itself.
+    A missing file is fine for a keyless read. A present file must meet the
+    same permission and content rules whether lookup or add needs it.
     """
     supplied = os.environ.get("OXTAGGER_TOKEN")
     if supplied and supplied.strip():
@@ -144,20 +144,32 @@ def write_token() -> str:
     try:
         mode = path.stat().st_mode
     except FileNotFoundError:
-        raise Unconfigured(f"writing needs the book's token in {path}") from None
+        return None
     except OSError as error:
         raise Unconfigured(f"cannot read {path}: {error.strerror}") from error
     # The same refusal ssh makes of a private key, for the same reason.
     if os.name != "nt" and mode & 0o077:
         raise Unconfigured(f"{path} is readable by others; chmod 600 it")
-    token = path.read_text(encoding="utf-8").strip()
+    try:
+        token = path.read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeError) as error:
+        raise Unconfigured(f"cannot read {path}") from error
     if not token:
         raise Unconfigured(f"{path} is empty")
     return token
 
 
+def write_token() -> str:
+    """The token a write must present, resolved internally rather than passed
+    as an argument. The browser view's `Origin` is not a CLI credential."""
+    token = configured_token()
+    if token is None:
+        raise Unconfigured(f"writing needs the book's token in {config_home() / 'token'}")
+    return token
+
+
 # ---------------------------------------------------------------------------
-# The one request this program makes
+# The request both commands use
 # ---------------------------------------------------------------------------
 
 def request(url: str, *, method: str = "GET", token: str | None = None, body=None):
@@ -179,6 +191,10 @@ def request(url: str, *, method: str = "GET", token: str | None = None, body=Non
         try:
             return error.code, json.load(error)
         except Exception:
+            # A proxy may answer a 401 with HTML or no body. Lookup still needs
+            # the status to know when the book requires a bearer token.
+            if error.code == 401:
+                return 401, None
             raise Unavailable(f"the book answered {error.code}") from error
     except (urllib.error.URLError, TimeoutError, OSError) as error:
         raise Unavailable(f"{urlsplit(url).netloc or url} could not be reached") from error
@@ -187,8 +203,14 @@ def request(url: str, *, method: str = "GET", token: str | None = None, body=Non
 
 
 def records_of(url: str) -> list:
-    """The one request a lookup makes."""
+    """Read once without a token; on 401 alone, retry once with one if set."""
     status, body = request(url + "/tags")
+    if status == 401:
+        token = configured_token()
+        if token is None:
+            raise Unavailable("the book requires a token; set OXTAGGER_TOKEN "
+                              f"or put it in {config_home() / 'token'}")
+        status, body = request(url + "/tags", token=token)
     if status != 200:
         raise Unavailable(f"the book answered {status}")
     records = body.get("records") if isinstance(body, dict) else None
@@ -339,10 +361,9 @@ def lookup(argv: list[str]) -> int:
 
     try:
         book = book_url()
+        records = records_of(book)
     except Unconfigured as reason:
         sys.exit(f"{PROG}: {reason}")
-    try:
-        records = records_of(book)
     except Unavailable as reason:
         # Nothing about any address is printed: an outage must not be able to
         # read as an answer. With --json there is no `results` key at all.
