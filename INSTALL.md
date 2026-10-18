@@ -159,9 +159,10 @@ view's Tailscale identity and `Origin` rules stay a browser boundary — a
 command does not supply those for itself, and `add` sends no `Origin` header.
 
 Exit `0` means every name is accounted for, saved or already held. Exit `1` is
-bad input or configuration, before anything is sent. Exit `2` means a name's
-fate is unknown — a refused token, an unreachable book, or a reply that did not
-confirm the write — and is never a successful save.
+bad input or configuration, before anything is sent. Exit `2` means the add was
+incomplete or unconfirmed, never a successful save. A rejected token wrote
+nothing; after a lost or malformed write reply, whether a name was saved is
+unknown, so do not retry blindly.
 
 ## Data and backups
 

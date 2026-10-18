@@ -316,6 +316,13 @@ def test_a_hash_is_a_comment_only_at_the_start_of_a_line(book):
         (OTHER, 'eip155:1'): ['Vault #2 (old)']}
 
 
+def test_a_hash_in_a_name_survives_file_input(book, tmp_path):
+    names = tmp_path / 'names.txt'
+    names.write_text(f'  # whole-line comment\n{ADDRESS}  DAO #1\n', encoding='utf-8')
+    assert cli.add(['--chain', '1', '--file', str(names)]) == 0
+    assert held(book)[(ADDRESS, 'eip155:1')]['tags'] == ['DAO #1']
+
+
 def test_a_conflict_list_this_batch_did_not_ask_for_is_not_filtered_by(book, monkeypatch, capsys):
     """A 409 naming an address we never sent would otherwise drop the wrong
     change and report a stranger's name as kept."""
@@ -324,6 +331,17 @@ def test_a_conflict_list_this_batch_did_not_ask_for_is_not_filtered_by(book, mon
         (409, {'conflicts': [{'address': foreign, 'scope': 'eip155:1',
                               'current': {'address': foreign, 'scope': 'eip155:1',
                                           'tags': ['Someone Else']}}]}),
+        (409, {'conflicts': [{'address': ADDRESS, 'scope': 'eip155:1',
+                              'current': {'address': foreign, 'scope': 'global',
+                                          'tags': ['Someone Else']}}]}),
+        (409, {'conflicts': [{'address': ADDRESS, 'scope': 'eip155:1',
+                              'current': {'address': ADDRESS, 'scope': 'eip155:2',
+                                          'tags': ['Other Chain']}}]}),
+        (409, {'conflicts': [
+            {'address': ADDRESS, 'scope': 'eip155:1',
+             'current': {'address': ADDRESS, 'scope': 'eip155:1', 'tags': ['Mine']}},
+            {'address': ADDRESS, 'scope': 'eip155:1',
+             'current': {'address': ADDRESS, 'scope': 'eip155:1', 'tags': ['Mine']}}]}),
         (409, {'conflicts': [{'address': ADDRESS, 'scope': 'eip155:1', 'current': None}]}),
         (409, {'conflicts': 'not a list'}),
         (409, {}),
@@ -502,3 +520,36 @@ def test_the_real_transport_sends_bearer_auth_and_no_origin(monkeypatch, capsys)
     # The token appears in no output of its own.
     printed = capsys.readouterr()
     assert TOKEN not in printed.out and TOKEN not in printed.err
+
+
+def test_a_redirect_is_not_followed():
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    visited = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            visited.append(self.path)
+            if self.path == '/tags':
+                self.send_response(302)
+                self.send_header('Location', '/redirected')
+                self.end_headers()
+                return
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(b'{"records": []}')
+
+        def log_message(self, *args):
+            pass
+
+    httpd = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        url = f'http://127.0.0.1:{httpd.server_address[1]}'
+        with pytest.raises(cli.Unavailable):
+            cli.request(url + '/tags')
+    finally:
+        httpd.shutdown()
+    assert visited == ['/tags']

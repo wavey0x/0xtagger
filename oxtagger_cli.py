@@ -1,11 +1,11 @@
-"""One command for the book: serve it, or look an address up.
+"""One command for the book: serve it, look an address up, or add a name.
 
 Dispatch is standard-library only and the server is imported inside `serve`
 alone, because a lookup is the frequent operation and must not pay for a web
 framework it never uses.
 
-`lookup` makes one GET and writes nothing. A write path will present the
-bearer token `write_token()` resolves; nothing here writes yet.
+`lookup` makes one GET and writes nothing. `add` presents the bearer token
+`write_token()` resolves and creates names only where none already stand.
 
 A book that cannot be read is reported as unavailable and never as an address
 having no tag. Those are different answers and conflating them is how a
@@ -464,17 +464,32 @@ def add(argv: list[str]) -> int:
         if status == 409:
             # Some of these are already named. Those are the book's to keep:
             # send the rest once and stop. One retry, never a loop.
-            # Every conflict must name something this batch actually asked
-            # for. A list we cannot account for is not a list to filter by:
-            # it would drop the wrong change, or report a name as kept that
-            # was never ours to ask about.
+            # The conflict key and the current record must both describe a
+            # candidate we sent. A list we cannot account for is not a list
+            # to filter by: it could report a stranger's name as kept.
             conflicts = body.get("conflicts") if isinstance(body, dict) else None
             asked = {(change["address"], change["scope"]) for change in changes}
-            if (not isinstance(conflicts, list) or not conflicts
-                    or not all(isinstance(held, dict)
-                               and (held.get("address"), held.get("scope")) in asked
-                               and readable(held.get("current"))
-                               for held in conflicts)):
+            seen = set()
+            valid = isinstance(conflicts, list) and bool(conflicts)
+            if valid:
+                for held in conflicts:
+                    if not isinstance(held, dict):
+                        valid = False
+                        break
+                    address, scope, current = (held.get("address"), held.get("scope"),
+                                               held.get("current"))
+                    if not isinstance(address, str) or not isinstance(scope, str):
+                        valid = False
+                        break
+                    key = (address, scope)
+                    current_scopes = {scope} if scope == "global" else {scope, "global"}
+                    if (key not in asked or key in seen or not readable(current)
+                            or current["address"] != address
+                            or current["scope"] not in current_scopes):
+                        valid = False
+                        break
+                    seen.add(key)
+            if not valid:
                 print(f"{PROG}: the book refused the batch and did not say which "
                       f"of these names it holds; nothing was written", file=sys.stderr)
                 return 2
