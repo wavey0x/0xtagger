@@ -2,9 +2,12 @@
    rounded or seen through, so the mat around the card is ours to colour. The
    wash sits under the glass rather than in it, and reads through. */
 body { width: 320px; padding: 10px; background: radial-gradient(ellipse at top left, var(--0xtagger-accent-wash), transparent 70%), var(--0xtagger-canvas); }
-#sync { margin: 5px 0 12px; font-size: 10px; }
+/* Which book, and how fresh: context under the work, not a banner over it. */
+.book-line { display: flex; align-items: center; gap: 8px; margin-top: 11px; }
+.book-line #location { min-width: 0; }
+#sync { font-size: 10px; white-space: nowrap; }
 #sync[data-offline="true"] { color: var(--0xtagger-warning); }
-.site { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-block: 1px solid var(--0xtagger-line); }
+.site { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--0xtagger-line); }
 /* The hostname beside its switch says what the row is for; a heading over it
    only repeats the sentence the two already make. */
 #site-name { min-width: 0; font-size: 12px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -20,8 +23,7 @@ body { width: 320px; padding: 10px; background: radial-gradient(ellipse at top l
 /* Offered only where a website keeps names of its own, and only once it is on. */
 .import-site { display: block; width: 100%; margin-top: 8px; text-align: left; font-size: 12px; }
 
-.finder { padding-top: 12px; }
-.finder label { display: block; margin-bottom: 6px; font-size: 11px; font-weight: 750; }
+.finder { padding-bottom: 11px; border-bottom: 1px solid var(--0xtagger-line); }
 .lookup-field { display: flex; align-items: center; min-height: 36px; border: 1px solid var(--0xtagger-line); border-radius: 8px; background: var(--0xtagger-soft); }
 .lookup-field:focus-within { border-color: var(--0xtagger-accent); }
 #lookup { min-width: 0; flex: 1; border: 0; background: transparent; padding: 8px 10px; color: var(--0xtagger-ink); font: 12px system-ui, sans-serif; outline: 0; }
@@ -29,19 +31,21 @@ body { width: 320px; padding: 10px; background: radial-gradient(ellipse at top l
 #lookup-result { margin-top: 7px; }
 .lookup-hint { margin: 0; color: var(--0xtagger-muted); font-size: 11px; line-height: 1.35; }
 .lookup-list { display: grid; gap: 2px; }
-.lookup-item { display: grid; width: 100%; padding: 7px 8px; border-radius: 7px; text-align: left; background: transparent; color: var(--0xtagger-ink); }
+/* One row per address: the name it goes by, and how many others it has. */
+.lookup-item { display: grid; gap: 1px; width: 100%; padding: 7px 8px; border-radius: 7px; text-align: left; background: transparent; color: var(--0xtagger-ink); }
 .lookup-item:hover,.lookup-item:focus-visible { background: var(--0xtagger-soft); }
-.lookup-item strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
-.lookup-item small,.scope-row small { color: var(--0xtagger-muted); font-size: 10px; }
-.lookup-more { margin: 6px 0 0; color: var(--0xtagger-muted); font-size: 10px; }
-.lookup-address { display: flex; align-items: center; gap: 4px; margin-bottom: 7px; }
+.lookup-name { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.lookup-name strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.more-count { flex: none; padding: 1px 5px; border-radius: 999px; background: var(--0xtagger-soft); color: var(--0xtagger-muted); font-size: 10px; font-weight: 650; }
+.lookup-item:hover .more-count,.lookup-item:focus-visible .more-count { background: var(--0xtagger-canvas); }
+.lookup-item small { color: var(--0xtagger-muted); font-size: 10px; }
+/* A way to the rest, not a sentence about there being more. */
+.lookup-more { display: block; width: 100%; margin-top: 2px; padding: 6px 8px; border-radius: 7px; text-align: left; color: var(--0xtagger-muted); font-size: 10px; font-weight: 600; }
+.lookup-more:hover,.lookup-more:focus-visible { color: var(--0xtagger-accent); background: var(--0xtagger-accent-hover); }
+.lookup-address { display: flex; align-items: center; gap: 4px; padding-left: 8px; }
 .lookup-address .reveal { flex: 1; min-width: 0; text-align: left; padding: 5px 0; background: transparent; color: var(--0xtagger-ink); font: 11px ui-monospace, monospace; overflow-wrap: anywhere; }
 .lookup-address .copy { flex: none; padding: 5px; color: var(--0xtagger-muted); }
 .lookup-address .copy svg { display: block; width: 15px; height: 15px; }
-.scope-row { display: flex; align-items: center; gap: 7px; padding: 6px 0; border-top: 1px solid var(--0xtagger-line); }
-.scope-row .tags { flex: 1; min-width: 0; font-size: 12px; font-weight: 700; overflow-wrap: anywhere; }
-.scope-row small { display: block; font-weight: 400; }
-.scope-row button { flex: none; padding: 4px 6px; font-size: 11px; }
 .add-controls { display: flex; gap: 6px; margin-top: 8px; }
 .add-controls select,.add-controls input { min-width: 0; flex: 1; border: 1px solid var(--0xtagger-line); border-radius: 6px; background: var(--0xtagger-soft); color: var(--0xtagger-ink); padding: 6px; font: 11px system-ui, sans-serif; }
 .add-controls button { flex: none; padding: 6px 9px; font-size: 11px; }

@@ -1,4 +1,4 @@
-import { filterEntries, hostPermission, normalizeScope, parseAddress, searchEntries, sourceName } from './shared.js';
+import { filterEntries, hostPermission, normalizeScope, parseAddress, searchEntries } from './shared.js';
 import { $, rpc, emptyState, currentSnapshot, syncText, bookPicker, connectForm, watchBook, tooltips } from './ui.js';
 import { networks, scopeName } from './networks.js';
 import { checksumAddress } from './checksum.js';
@@ -81,20 +81,15 @@ function renderExact(address, output) {
       tell('Address selected. Copy it with your keyboard.');
     }
   };
-  line.append(reveal, copy); output.append(line);
+  line.append(reveal, copy);
   if (found.length) {
-    for (const record of found) {
-      const row = node('div', 'scope-row');
-      const tags = node('div', 'tags', record.tags.join(' · '));
-      tags.append(node('small', '', scopeName(record.scope)));
-      const button = node('button', 'quiet', 'Edit');
-      button.type = 'button'; button.setAttribute('aria-label', `Edit ${scopeName(record.scope)} tags for ${display}`);
-      button.onclick = () => edit(address, record.scope);
-      row.append(tags, button); output.append(row);
-    }
+    // The name it goes by, not every name it has. The rest are a count, and
+    // the editor is where they are read and changed.
+    const others = found.reduce((count, record) => count + record.tags.length, 0) - 1;
+    output.append(resultRow(found[0], { others, open: () => edit(address, found[0].scope) }), line);
     return;
   }
-  output.append(node('p', 'lookup-hint', state.error ? 'No tag in the saved copy of this book.' : 'No tags for this address in this book.'));
+  output.append(line);
   // A pasted address has no reliable chain context, unlike a name read from a
   // website. The global choice is explicit before a new record is written.
   const controls = node('div', 'add-controls');
@@ -122,6 +117,32 @@ function renderExact(address, output) {
   controls.append(select, add); output.append(controls, chain, error);
 }
 
+function resultRow(record, { others = 0, address = '', open }) {
+  const item = node('button', 'lookup-item');
+  item.type = 'button';
+  const head = node('span', 'lookup-name');
+  head.append(node('strong', '', record.tags[0]));
+  // Every network is where a name stands unless it says otherwise, so only a
+  // narrower scope is worth the room.
+  const where = record.scope === 'global' ? '' : scopeName(record.scope);
+  if (others > 0) head.append(node('span', 'more-count', `+${others}`));
+  item.append(head);
+  const under = [address, where].filter(Boolean).join(' · ');
+  if (under) item.append(node('small', '', under));
+  item.setAttribute('aria-label',
+    [record.tags[0], others > 0 ? `and ${others} more` : '', where, address].filter(Boolean).join(', '));
+  item.onclick = open;
+  item.onkeydown = event => {
+    if (event.key === 'Escape') { event.preventDefault(); $('#lookup').focus(); }
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const items = [...$('#lookup-result').querySelectorAll('.lookup-item')];
+      items[Math.max(0, Math.min(items.length - 1, items.indexOf(item) + (event.key === 'ArrowDown' ? 1 : -1)))].focus();
+    }
+  };
+  return item;
+}
+
 function popupRank(entry, query) {
   const { record } = entry;
   const tags = record.tags.map(tag => tag.toLocaleLowerCase());
@@ -141,10 +162,9 @@ function renderFinder() {
   output.replaceChildren();
   if (!value) {
     $('#lookup-status').textContent = '';
-    output.append(node('p', 'lookup-hint', state.records.length
-      ? 'Find a tag or paste a full address.'
-      : siteURL ? 'Enable tagging on this site, or paste an address to add your first tag.'
-        : 'Paste a full address to add your first tag.'));
+    // The placeholder has already said what this takes. Only a book with
+    // nothing in it needs a word, because it has nothing else to show.
+    if (!state.records.length) output.append(node('p', 'lookup-hint', 'No tags yet'));
     return;
   }
   const address = parseAddress(value);
@@ -155,30 +175,26 @@ function renderFinder() {
       a.record.tags[0].localeCompare(b.record.tags[0]) || a.record.address.localeCompare(b.record.address));
   if (!matches.length) {
     $('#lookup-status').textContent = 'No matches.';
-    output.append(node('p', 'lookup-hint', value.startsWith('0x')
-      ? 'No match. Paste a full 0x address to add it.' : 'No matching tags or addresses.'));
+    output.append(node('p', 'lookup-hint',
+      value.startsWith('0x') ? 'Paste the full address to add it' : 'No matches'));
     return;
   }
   const list = node('div', 'lookup-list');
   $('#lookup-status').textContent = `${matches.length} ${matches.length === 1 ? 'match' : 'matches'}.`;
   for (const { record } of matches.slice(0, 5)) {
-    const item = node('button', 'lookup-item');
-    item.type = 'button';
-    item.append(node('strong', '', record.tags.join(' · ')),
-      node('small', '', `${shortAddress(checksumAddress(record.address))} · ${scopeName(record.scope)}${record.source ? ` · ${sourceName(record.source)}` : ''}`));
-    item.onclick = () => { input.value = checksumAddress(record.address); revealed = false; renderFinder(); $('#lookup-result .reveal').focus(); };
-    item.onkeydown = event => {
-      if (event.key === 'Escape') { event.preventDefault(); input.focus(); }
-      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-        event.preventDefault();
-        const items = [...list.querySelectorAll('.lookup-item')];
-        items[Math.max(0, Math.min(items.length - 1, items.indexOf(item) + (event.key === 'ArrowDown' ? 1 : -1)))].focus();
-      }
-    };
-    list.append(item);
+    list.append(resultRow(record, {
+      others: record.tags.length - 1,
+      address: shortAddress(checksumAddress(record.address)),
+      open: () => { input.value = checksumAddress(record.address); revealed = false; renderFinder(); $('#lookup-result .reveal').focus(); },
+    }));
   }
   output.append(list);
-  if (matches.length > 5) output.append(node('p', 'lookup-more', `Showing 5 of ${matches.length}. Narrow your search or open the book.`));
+  if (matches.length > 5) {
+    // A way to the rest, rather than a sentence about there being more.
+    const more = node('button', 'lookup-more', `${matches.length - 5} more`);
+    more.type = 'button'; more.onclick = openBook;
+    output.append(more);
+  }
 }
 const setup = connectForm({ container: $('#server'), state: () => state, created: render,
   busy: value => { busy = value; render(); }, error: tell,
@@ -258,7 +274,7 @@ $('#lookup').onkeydown = event => {
     if (first) { event.preventDefault(); first.focus(); }
   }
   if (event.key === 'Enter') {
-    const action = $('#lookup-result .add-controls button, #lookup-result .scope-row button, #lookup-result .lookup-item');
+    const action = $('#lookup-result .lookup-item, #lookup-result .add-controls button');
     if (action) { event.preventDefault(); action.click(); }
   }
   if (event.key === 'Escape' && $('#lookup').value) {
