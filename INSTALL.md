@@ -129,12 +129,14 @@ it as unavailable — never as an address having no tag.
 
 ## Record a name from the terminal
 
-`0xtagger add` writes a name the work established. It only ever creates a
-record: a name already in the book wins and is reported as kept, and nothing is
-replaced or deleted.
+`0xtagger add` records strong names the work established. It creates a record
+when that address and scope are new, or appends distinct tags to an existing
+record. The existing first tag stays the displayed name; nothing is replaced
+or deleted.
 
 ```sh
 0xtagger add --chain 1 '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984=UNI Token'
+0xtagger add --chain 1 '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984=UNI Token' '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984=Uniswap Token'
 0xtagger add --chain 1 --file identities.txt   # `ADDRESS Tag` per line, # comments skipped
 0xtagger add --global '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045=vitalik.eth'
 ```
@@ -143,9 +145,11 @@ replaced or deleted.
 that network. `--global` names the address everywhere and is for an identity
 the evidence shows holds across chains, never a fallback when the chain is
 unclear. One invocation carries one scope; run it again for another. The whole
-batch is checked before anything is sent, lands in one atomic request, and
-carries `an investigation` as its source so these records stay distinguishable
-from the ones you tagged by hand.
+batch is checked before anything is sent and normally lands in one atomic
+request. Repeated addresses collect tags in the order given. If only a global
+record exists, a chain addition creates a more specific record that becomes the
+displayed name on that chain. `an investigation` is recorded as the source only
+when a new record is created; an existing record keeps its original source.
 
 Writing presents the book's own token, read from `~/.config/0xtagger/token`:
 
@@ -160,11 +164,13 @@ an argument or prints it; a token file others can read is refused. The browser
 view's Tailscale identity and `Origin` rules stay a browser boundary — a
 command does not supply those for itself, and `add` sends no `Origin` header.
 
-Exit `0` means every name is accounted for, saved or already held. Exit `1` is
-bad input or configuration, before anything is sent. Exit `2` means the add was
-incomplete or unconfirmed, never a successful save. A rejected token wrote
-nothing; after a lost or malformed write reply, whether a name was saved is
-unknown, so do not retry blindly.
+Exit `0` means every requested tag is present, newly added or already held.
+Exit `1` is bad input or local configuration. Exit `2` is a server, credential,
+transport, or reply failure; an unanswered write may have landed, so do not
+retry blindly. Exit `3` means the output names tags that could not be added
+because a record is full. On a capacity refusal, the server writes none of the
+batch; the command excludes the full records and tries the rest once. A
+capacity omission is known and is never reported as an existing tag.
 
 ## Data and backups
 

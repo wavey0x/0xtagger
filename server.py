@@ -45,6 +45,15 @@ def scope_key(value: str) -> str:
     return value
 
 
+def clean_tag(tag: str) -> str:
+    tag = tag.strip()
+    if not tag or len(tag) > MAX_TAG_LENGTH:
+        raise ValueError(f"Tags must contain 1–{MAX_TAG_LENGTH} characters.")
+    if any(ord(character) < 32 or ord(character) == 127 for character in tag):
+        raise ValueError("Tags cannot contain control characters.")
+    return tag
+
+
 class TagWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
     tags: list[str] = Field(max_length=MAX_TAGS)
@@ -61,11 +70,7 @@ class TagWrite(BaseModel):
         cleaned = []
         seen = set()
         for tag in tags:
-            tag = tag.strip()
-            if not tag or len(tag) > MAX_TAG_LENGTH:
-                raise ValueError(f"Tags must contain 1–{MAX_TAG_LENGTH} characters.")
-            if any(ord(character) < 32 or ord(character) == 127 for character in tag):
-                raise ValueError("Tags cannot contain control characters.")
+            tag = clean_tag(tag)
             if tag.casefold() in seen:
                 raise ValueError("Each tag in a list must be distinct.")
             seen.add(tag.casefold())
@@ -86,6 +91,27 @@ class TagChange(TagWrite):
 class BookWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
     changes: list[TagChange] = Field(max_length=5000)
+
+
+class TagAddition(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    address: str
+    scope: str
+    tags: list[str] = Field(min_length=1, max_length=MAX_TAGS)
+    source: Literal["safe:address-book", "safe:page", "etherscan:page", "arkham:api",
+                    "agent:investigation"] | None = None
+
+    @field_validator("tags")
+    @classmethod
+    def clean_tags(cls, tags: list[str]) -> list[str]:
+        # Addition is idempotent: duplicates within the request are no-ops,
+        # just like duplicates already held by the book.
+        return [clean_tag(tag) for tag in tags]
+
+
+class BookAdd(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    additions: list[TagAddition] = Field(max_length=5000)
 
 
 def record(row: sqlite3.Row | None) -> dict | None:
@@ -188,10 +214,10 @@ def create_app(database: str | Path, token: str, *, tailscale_login: str | None 
         if not change.tags:
             connection.execute("DELETE FROM tags WHERE address = ? AND scope = ?", (address, scope))
             return None
-        # A record's origin is settled when it is created. A later write
-        # changes its tags, never the history of how it got here.
+        # A record's origin is settled when it is created. An existing record
+        # without a source stays without one, including on later edits.
         current = held(connection, address, scope)
-        source = (current["source"] if current else None) or change.source
+        source = current["source"] if current is not None else change.source
         saved = {
             "address": address, "scope": scope,
             "tags": change.tags, "version": secrets.token_hex(16),
@@ -199,10 +225,7 @@ def create_app(database: str | Path, token: str, *, tailscale_login: str | None 
         }
         connection.execute(
             "INSERT INTO tags (address, scope, tags_json, version, source) VALUES (?, ?, ?, ?, ?) "
-            # `source` above already resolved to the one this record has, so
-            # writing it back changes nothing for a record that has one — and
-            # is the only way one written before the column existed can ever
-            # acquire it.
+            # `source` above is the source from creation, even when it is NULL.
             "ON CONFLICT(address, scope) DO UPDATE SET "
             "tags_json=excluded.tags_json, version=excluded.version, source=excluded.source",
             (address, scope, json.dumps(change.tags, ensure_ascii=False), saved["version"], source),
@@ -275,6 +298,63 @@ def create_app(database: str | Path, token: str, *, tailscale_login: str | None 
                 # number that tells every reader the book moved.
                 mark = bump(connection) if changes else revision_of(connection)
             return JSONResponse({"records": saved}, headers={"ETag": f'"{mark}"'})
+
+        return unlocked(work)
+
+    @app.post("/tags", dependencies=[Depends(authenticated)])
+    def add_many(write: BookAdd):
+        """Add labels without replacing any already held at the same scope."""
+        additions = [(address_key(item.address), scope_key(item.scope), item)
+                     for item in write.additions]
+        keys = [(address, scope) for address, scope, _ in additions]
+        if len(keys) != len(set(keys)):
+            raise HTTPException(422, "Each address and scope may appear once in a batch.")
+
+        def work():
+            with closing(connect()) as connection, connection:
+                connection.execute("BEGIN IMMEDIATE")
+                staged = []
+                at_capacity = []
+                for address, scope, item in additions:
+                    current = held(connection, address, scope)
+                    tags = json.loads(current["tags_json"]) if current is not None else []
+                    seen = {tag.casefold() for tag in tags}
+                    added, already_present = [], []
+                    for tag in item.tags:
+                        if tag.casefold() in seen:
+                            already_present.append(tag)
+                        else:
+                            added.append(tag)
+                            seen.add(tag.casefold())
+                    if len(tags) + len(added) > MAX_TAGS:
+                        at_capacity.append({"address": address, "scope": scope,
+                                            "limit": MAX_TAGS, "available": MAX_TAGS - len(tags),
+                                            "requested_new": len(added),
+                                            "not_added_tags": added,
+                                            "already_present_tags": already_present})
+                    staged.append((address, scope, item, current, tags, added, already_present))
+                if at_capacity:
+                    return JSONResponse(status_code=409, content={
+                        "code": "tag_limit", "detail": "Some records cannot hold every added tag.",
+                        "at_capacity": at_capacity,
+                    })
+
+                results = []
+                changed = False
+                for address, scope, item, current, tags, added, already_present in staged:
+                    if added:
+                        saved = apply(connection, address, scope, TagWrite(
+                            tags=tags + added, version=current["version"] if current else None,
+                            source=item.source))
+                        changed = True
+                    else:
+                        saved = record(current)
+                    results.append({"address": address, "scope": scope,
+                                    "created": current is None, "added_tags": added,
+                                    "already_present_tags": already_present,
+                                    "record": saved})
+                mark = bump(connection) if changed else revision_of(connection)
+            return JSONResponse({"results": results}, headers={"ETag": f'"{mark}"'})
 
         return unlocked(work)
 

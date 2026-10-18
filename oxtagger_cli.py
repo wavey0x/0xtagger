@@ -5,8 +5,8 @@ alone, because a lookup is the frequent operation and must not pay for a web
 framework it never uses.
 
 `lookup` makes a keyless GET and retries once with the configured token only
-on 401. `add` presents the bearer token `write_token()` resolves and creates
-names only where none already stand.
+on 401. `add` presents the bearer token `write_token()` resolves and adds
+names without replacing those already held.
 
 A book that cannot be read is reported as unavailable and never as an address
 having no tag. Those are different answers and conflating them is how a
@@ -53,6 +53,7 @@ SOURCE = "agent:investigation"
 # Mirrors MAX_TAG_LENGTH and the batch limit in server.py; checked here only to
 # fail before a round trip rather than after one.
 MAX_TAG_LENGTH = 80
+MAX_TAGS = 32
 MAX_CHANGES = 5000
 
 
@@ -62,6 +63,12 @@ class Unavailable(Exception):
 
 class Unconfigured(Exception):
     """This machine has not been told where the book is, or how to write to it."""
+
+
+class CliParser(argparse.ArgumentParser):
+    def error(self, message):
+        # Exit 2 means the book or a write reply failed, never malformed input.
+        self.exit(1, f"{self.prog}: error: {message}\n")
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -336,7 +343,7 @@ def report(rows: list[dict], book: str, as_json: bool) -> None:
 
 
 def lookup(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(
+    parser = CliParser(
         prog=f"{PROG} lookup", description="What your own book calls an Ethereum address.",
         epilog="Tags are your own labels, not verified identities.")
     parser.add_argument("address", nargs="*", help="one or more Ethereum addresses")
@@ -408,45 +415,85 @@ def named(text: str) -> tuple[str, str] | None:
     return address.lower(), tag
 
 
-def changes_from(values, scope: str) -> list[dict]:
-    """Every name checked before anything is sent, so a bad line costs no
-    round trip and half a batch is never on its way."""
-    held: dict[str, str] = {}
+def additions_from(values, scope: str) -> list[dict]:
+    """Check and group every name before sending a single batch."""
+    held: dict[str, list[str]] = {}
     for value in values:
         pair = named(value)
         if pair is None:
             continue
         address, tag = pair
-        if held.get(address, tag) != tag:
-            sys.exit(f"{PROG}: {address} is named twice, differently, in one batch")
-        held[address] = tag
+        tags = held.setdefault(address, [])
+        if tag.casefold() not in {existing.casefold() for existing in tags}:
+            tags.append(tag)
+        if len(tags) > MAX_TAGS:
+            sys.exit(f"{PROG}: {address} has more than {MAX_TAGS} tags in one batch")
     if len(held) > MAX_CHANGES:
-        sys.exit(f"{PROG}: a batch carries at most {MAX_CHANGES} names")
+        sys.exit(f"{PROG}: a batch carries at most {MAX_CHANGES} addresses")
     return [
-        # version None asserts nothing stands at this scope yet. For a chain,
-        # only_if_unnamed also asks whether an all-networks name covers the
-        # address; on a global write the server does not consult it, because
-        # the version check above already answers the same question, so it is
-        # left off rather than sent to do nothing.
-        {"address": address, "scope": scope, "tags": [tag], "version": None,
-         "source": SOURCE, **({} if scope == "global" else {"only_if_unnamed": True})}
-        for address, tag in held.items()
+        {"address": address, "scope": scope, "tags": tags, "source": SOURCE}
+        for address, tags in held.items()
     ]
 
 
-def confirmed(records, change) -> bool:
-    """A save is reported only where the book's reply shows what we asked for."""
-    return any(isinstance(record, dict)
-               and record.get("address") == change["address"]
-               and record.get("scope") == change["scope"]
-               and record.get("tags") == change["tags"]
-               for record in records)
+def confirmed(result, addition) -> bool:
+    """Each requested tag must appear in the returned record and accounting."""
+    if (not isinstance(result, dict) or result.get("address") != addition["address"]
+            or result.get("scope") != addition["scope"]
+            or not isinstance(result.get("created"), bool)):
+        return False
+    record = result.get("record")
+    added, present = result.get("added_tags"), result.get("already_present_tags")
+    if (not isinstance(record, dict) or record.get("address") != addition["address"]
+            or record.get("scope") != addition["scope"]
+            or not isinstance(record.get("tags"), list)
+            or not isinstance(added, list) or not isinstance(present, list)
+            or any(not isinstance(tag, str) for tag in [*record["tags"], *added, *present])):
+        return False
+    asked = {tag.casefold() for tag in addition["tags"]}
+    reported = {tag.casefold() for tag in [*added, *present]}
+    held = {tag.casefold() for tag in record["tags"]}
+    return (len(added) + len(present) == len(addition["tags"])
+            and asked == reported and asked <= held
+            and (not result["created"] or not present)
+            and not ({tag.casefold() for tag in added} & {tag.casefold() for tag in present}))
+
+
+def capacity_items(body, additions) -> dict[tuple[str, str], dict] | None:
+    """Trust a capacity refusal only when it accounts for our own items."""
+    if not isinstance(body, dict) or body.get("code") != "tag_limit":
+        return None
+    entries = body.get("at_capacity")
+    if not isinstance(entries, list) or not entries:
+        return None
+    asked = {(item["address"], item["scope"]): item for item in additions}
+    seen = {}
+    for item in entries:
+        if not isinstance(item, dict):
+            return None
+        address, scope = item.get("address"), item.get("scope")
+        if not isinstance(address, str) or not isinstance(scope, str):
+            return None
+        key = (address, scope)
+        missing, present = item.get("not_added_tags"), item.get("already_present_tags")
+        if (key not in asked or key in seen
+                or not isinstance(missing, list) or not missing
+                or not isinstance(present, list)
+                or any(not isinstance(tag, str) for tag in [*missing, *present])
+                or len(missing) + len(present) != len(asked[key]["tags"])
+                or {tag.casefold() for tag in [*missing, *present]}
+                   != {tag.casefold() for tag in asked[key]["tags"]}
+                or {tag.casefold() for tag in missing}
+                   & {tag.casefold() for tag in present}):
+            return None
+        seen[key] = item
+    return seen
 
 
 def add(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(
+    parser = CliParser(
         prog=f"{PROG} add",
-        description="Record a name your work established. Never replaces a name already in the book.",
+        description="Add established names, preserving the book's existing primary names.",
         epilog="Writes read the book's token from its configured file; it is never an argument.")
     parser.add_argument("name", nargs="*", metavar="ADDRESS=TAG",
                         help="one or more addresses and the name each one has")
@@ -468,9 +515,9 @@ def add(argv: list[str]) -> int:
         return 0
 
     scope = "global" if args.everywhere else f"eip155:{args.chain}"
-    changes = changes_from(
+    additions = additions_from(
         [*args.name, *(read_lines(args.file) if args.file else [])], scope)
-    if not changes:
+    if not additions:
         return 0
 
     try:
@@ -478,94 +525,79 @@ def add(argv: list[str]) -> int:
     except Unconfigured as reason:
         sys.exit(f"{PROG}: {reason}")
 
-    kept, unsure = [], False
+    pending = additions
+    not_added = []
+    results = []
+    problem = None
     try:
-        status, body = request(book + "/tags", method="PUT", token=token,
-                               body={"changes": changes})
+        status, body = request(book + "/tags", method="POST", token=token,
+                               body={"additions": pending})
         if status == 409:
-            # Some of these are already named. Those are the book's to keep:
-            # send the rest once and stop. One retry, never a loop.
-            # The conflict key and the current record must both describe a
-            # candidate we sent. A list we cannot account for is not a list
-            # to filter by: it could report a stranger's name as kept.
-            conflicts = body.get("conflicts") if isinstance(body, dict) else None
-            asked = {(change["address"], change["scope"]) for change in changes}
-            seen = set()
-            valid = isinstance(conflicts, list) and bool(conflicts)
-            if valid:
-                for held in conflicts:
-                    if not isinstance(held, dict):
-                        valid = False
-                        break
-                    address, scope, current = (held.get("address"), held.get("scope"),
-                                               held.get("current"))
-                    if not isinstance(address, str) or not isinstance(scope, str):
-                        valid = False
-                        break
-                    key = (address, scope)
-                    current_scopes = {scope} if scope == "global" else {scope, "global"}
-                    if (key not in asked or key in seen or not readable(current)
-                            or current["address"] != address
-                            or current["scope"] not in current_scopes):
-                        valid = False
-                        break
-                    seen.add(key)
-            if not valid:
-                print(f"{PROG}: the book refused the batch and did not say which "
-                      f"of these names it holds; nothing was written", file=sys.stderr)
-                return 2
-            kept = list(conflicts)
-            taken = {(held["address"], held["scope"]) for held in conflicts}
-            changes = [change for change in changes
-                       if (change["address"], change["scope"]) not in taken]
-            if not changes:
-                status, body = 200, {"records": []}
+            full = capacity_items(body, pending)
+            if full is None:
+                problem = "the book refused the batch without a usable capacity report; nothing was written"
             else:
-                status, body = request(book + "/tags", method="PUT", token=token,
-                                       body={"changes": changes})
-                if status == 409:
-                    # Named between the two requests. The book keeps what it has.
-                    print(f"{PROG}: the book was written while this batch was being "
-                          f"added; nothing further was written", file=sys.stderr)
-                    return 2
+                not_added = [{"address": item["address"], "scope": item["scope"],
+                              "tags": full[(item["address"], item["scope"])]["not_added_tags"],
+                              "already_present_tags":
+                                  full[(item["address"], item["scope"])]["already_present_tags"]}
+                             for item in pending if (item["address"], item["scope"]) in full]
+                pending = [item for item in pending
+                           if (item["address"], item["scope"]) not in full]
+                if pending:
+                    # The first request wrote nothing. Try unaffected items
+                    # once, then stop, whatever the second reply says.
+                    status, body = request(book + "/tags", method="POST", token=token,
+                                           body={"additions": pending})
+                else:
+                    status, body = 200, {"results": []}
     except Unavailable as reason:
-        # A lost reply to a PUT does not say the write did not land.
-        print(f"{PROG}: book unavailable: {reason}. Whether anything was saved "
-              f"is unknown", file=sys.stderr)
-        return 2
+        # A lost reply may have landed. A blind retry could restore a tag
+        # someone removed between the two requests.
+        problem = f"book unavailable: {reason}. Whether anything was added is unknown"
 
-    if status == 401:
-        print(f"{PROG}: the book did not accept the token", file=sys.stderr)
-        return 2
-    if status != 200:
-        detail = body.get("detail") if isinstance(body, dict) else None
-        print(f"{PROG}: the book answered {status}: {detail or 'refused'}", file=sys.stderr)
-        return 2
-
-    records = body.get("records") if isinstance(body, dict) else None
-    if not isinstance(records, list):
-        records, unsure = [], True
-    saved = [change for change in changes if confirmed(records, change)]
-    if len(saved) != len(changes):
-        unsure = True
+    if problem is None:
+        if status == 401:
+            problem = "the book did not accept the token"
+        elif status != 200:
+            detail = body.get("detail") if isinstance(body, dict) else None
+            problem = f"the book answered {status}: {detail or 'refused'}"
+        else:
+            answer = body.get("results") if isinstance(body, dict) else None
+            if (not isinstance(answer, list) or len(answer) != len(pending)
+                    or not all(confirmed(result, item)
+                               for result, item in zip(answer, pending))):
+                problem = "the book did not confirm every tag; whether the write landed is unknown"
+            else:
+                results = answer
 
     if args.json:
-        print(json.dumps({"saved": saved, "kept": kept,
-                          **({"unconfirmed": True} if unsure else {})}, indent=2))
+        print(json.dumps({"results": results,
+                          "not_added": [{"address": item["address"], "scope": item["scope"],
+                                         "tags": item["tags"],
+                                         "already_present_tags": item["already_present_tags"],
+                                         "reason": "tag_limit"}
+                                        for item in not_added],
+                          **({"unconfirmed": True} if problem else {})}, indent=2))
     else:
-        for change in saved:
-            print(f"{short(change['address'])}  {change['tags'][0]}  added")
-        for held in kept:
-            current = held["current"]
-            print(f"{short(current['address'])}  {current['tags'][0]}  kept "
-                  f"({scope_name(current['scope'])})")
-        if not saved and not kept and not unsure:
+        for result in results:
+            if result["added_tags"]:
+                action = "created" if result["created"] else "added"
+                print(f"{short(result['address'])}  {' · '.join(result['added_tags'])}  {action}")
+            if result["already_present_tags"]:
+                print(f"{short(result['address'])}  "
+                      f"{' · '.join(result['already_present_tags'])}  already present")
+        for item in not_added:
+            if item["already_present_tags"]:
+                print(f"{short(item['address'])}  "
+                      f"{' · '.join(item['already_present_tags'])}  already present")
+            print(f"{short(item['address'])}  {' · '.join(item['tags'])}  not added (tag limit)")
+        if not results and not not_added and not problem:
             print("Nothing to add.")
-    if unsure:
-        print(f"{PROG}: the book did not confirm every name; whether the rest "
-              f"was saved is unknown", file=sys.stderr)
+    if problem:
+        print(f"{PROG}: {problem}", file=sys.stderr)
         return 2
-    return 0
+    return 3 if not_added else 0
 
 
 # ---------------------------------------------------------------------------

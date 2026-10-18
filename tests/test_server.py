@@ -33,12 +33,16 @@ def test_proxy_writes_require_the_browser_origin_and_keys_still_work(tmp_path):
         for origin in [None, 'null', 'https://other.example']:
             headers = identity | ({'Origin': origin} if origin else {})
             assert client.put(f'/tags/global/{ADDRESS}', headers=headers, json={'tags': ['Unwanted']}).status_code == 403
+            assert client.post('/tags', headers=headers, json={'additions': [
+                addition(tags=['Unwanted'])]}).status_code == 403
         assert client.get('/tags', headers=identity).json()['records'] == []
         saved = client.put(f'/tags/global/{ADDRESS}', headers=identity | {'Origin': 'https://electro.example'},
                            json={'tags': ['Mine'], 'version': None})
         assert saved.status_code == 200
         assert client.put(f'/tags/global/{ADDRESS}', headers=HEADERS,
                           json={'tags': ['From the extension'], 'version': saved.json()['record']['version']}).status_code == 200
+        assert client.post('/tags', headers=HEADERS,
+                           json={'additions': [addition(tags=['From the CLI'])]}).status_code == 200
         preflight = client.options('/tags', headers={'Origin': 'https://other.example',
                                    'Access-Control-Request-Method': 'PUT'})
         assert 'access-control-allow-origin' not in preflight.headers
@@ -89,6 +93,97 @@ def put(book, tags, version=None, scope='global', address=ADDRESS, source=None):
 
 def batch(book, changes):
     return book.put('/tags', json={'changes': changes})
+
+
+def add(book, additions):
+    return book.post('/tags', json={'additions': additions})
+
+
+def addition(address=ADDRESS, scope='eip155:1', tags=None, source='agent:investigation'):
+    return {'address': address, 'scope': scope,
+            'tags': ['Treasury'] if tags is None else tags, 'source': source}
+
+
+def test_add_creates_and_appends_in_order_without_replacing_the_primary(book):
+    first = add(book, [addition(tags=['Yearn Staker', 'Yearn DAO Staker'])])
+    assert first.status_code == 200
+    created = first.json()['results'][0]
+    assert created['created'] is True
+    assert created['added_tags'] == ['Yearn Staker', 'Yearn DAO Staker']
+    assert created['record']['source'] == 'agent:investigation'
+
+    second = add(book, [addition(tags=['yearn staker', 'Voter', 'voter'])])
+    assert second.status_code == 200
+    result = second.json()['results'][0]
+    assert result['created'] is False
+    assert result['added_tags'] == ['Voter']
+    assert result['already_present_tags'] == ['yearn staker', 'voter']
+    assert result['record']['tags'] == ['Yearn Staker', 'Yearn DAO Staker', 'Voter']
+    assert result['record']['source'] == 'agent:investigation'
+
+
+def test_add_preserves_an_existing_empty_source_and_a_duplicate_is_a_no_op(book):
+    original = put(book, ['Mine']).json()['record']
+    added = add(book, [addition(scope='global', tags=['Agent alias'])]).json()['results'][0]
+    assert added['record']['tags'] == ['Mine', 'Agent alias']
+    assert 'source' not in added['record']
+    mark = book.get('/tags').headers['etag']
+    repeat = add(book, [addition(scope='global', tags=['agent ALIAS'])]).json()['results'][0]
+    assert repeat['added_tags'] == []
+    assert repeat['already_present_tags'] == ['agent ALIAS']
+    assert repeat['record']['version'] == added['record']['version']
+    assert book.get('/tags').headers['etag'] == mark
+    assert original['version'] != added['record']['version']
+
+
+def test_add_capacity_names_every_offender_and_rolls_back_the_whole_batch(book):
+    other = '0x' + 'cd' * 20
+    put(book, [f'Name {i}' for i in range(31)], scope='eip155:1')
+    mark = book.get('/tags').headers['etag']
+    refused = add(book, [addition(tags=['New A', 'New B']), addition(other, tags=['Payroll'])])
+    assert refused.status_code == 409
+    assert refused.json()['code'] == 'tag_limit'
+    assert refused.json()['at_capacity'] == [
+        {'address': ADDRESS, 'scope': 'eip155:1', 'limit': 32, 'available': 1,
+         'requested_new': 2, 'not_added_tags': ['New A', 'New B'],
+         'already_present_tags': []}]
+    assert book.get('/tags').headers['etag'] == mark
+    assert len(book.get('/tags').json()['records']) == 1
+
+
+def test_a_capacity_result_separates_existing_tags_from_omitted_ones(book):
+    put(book, [f'Name {i}' for i in range(31)], scope='eip155:1')
+    refused = add(book, [addition(tags=['name 0', 'New A', 'New B'])])
+    assert refused.status_code == 409
+    entry = refused.json()['at_capacity'][0]
+    assert entry['already_present_tags'] == ['name 0']
+    assert entry['not_added_tags'] == ['New A', 'New B']
+    assert book.get('/tags').json()['records'][0]['tags'] == [f'Name {i}' for i in range(31)]
+
+
+def test_add_creates_a_chain_record_beside_a_global_name(book):
+    put(book, ['Global name'])
+    result = add(book, [addition(tags=['Chain role'])]).json()['results'][0]
+    assert result['created'] is True
+    records = book.get('/tags').json()['records']
+    assert {(row['scope'], row['tags'][0]) for row in records} == {
+        ('global', 'Global name'), ('eip155:1', 'Chain role')}
+
+
+def test_two_simultaneous_additions_keep_both_labels(book):
+    put(book, ['Primary'], scope='eip155:1')
+    with ThreadPoolExecutor(2) as executor:
+        answers = list(executor.map(lambda tag: add(book, [addition(tags=[tag])]), ['A', 'B']))
+    assert [answer.status_code for answer in answers] == [200, 200]
+    assert set(book.get('/tags').json()['records'][0]['tags']) == {'Primary', 'A', 'B'}
+    assert book.get('/tags').json()['records'][0]['tags'][0] == 'Primary'
+
+
+def test_add_rejects_invalid_and_repeated_address_scope_items(book):
+    for tags in [[], [''], ['bad\nname'], ['x' * 81]]:
+        assert add(book, [addition(tags=tags)]).status_code == 422
+    assert add(book, [addition(), addition(tags=['Second'])]).status_code == 422
+    assert book.get('/tags').json()['records'] == []
 
 
 def test_a_file_lands_whole_or_not_at_all(book):
@@ -223,14 +318,14 @@ def test_a_source_is_settled_when_a_record_is_created(book):
     assert book.get('/tags').json()['records'][0]['source'] == 'safe:address-book'
 
 
-def test_a_record_written_before_the_column_existed_can_still_be_attributed(book):
-    """Settled at creation is not the same as unanswerable forever."""
+def test_a_record_without_a_source_does_not_acquire_one_on_edit(book):
+    """A later writer cannot retroactively claim creation of a hand-made row."""
     plain = put(book, ['Treasury']).json()['record']
     assert 'source' not in plain
 
     named = put(book, ['Treasury'], version=plain['version'], source='safe:page')
-    assert named.json()['record']['source'] == 'safe:page'
-    assert book.get('/tags').json()['records'][0]['source'] == 'safe:page'
+    assert 'source' not in named.json()['record']
+    assert 'source' not in book.get('/tags').json()['records'][0]
 
 
 def test_a_record_composed_by_hand_carries_no_source(book):

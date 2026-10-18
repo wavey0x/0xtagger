@@ -328,7 +328,7 @@ def held(book):
 
 
 def writes(book):
-    return [method for method, _ in book.sent].count('PUT')
+    return [method for method, _ in book.sent].count('POST')
 
 
 def test_add_requires_exactly_one_scope():
@@ -336,12 +336,13 @@ def test_add_requires_exactly_one_scope():
                  ['--chain', '1', '--global', f'{ADDRESS}=Treasury']]:
         with pytest.raises(SystemExit) as refused:
             cli.add(argv)
-        assert refused.value.code == 2  # argparse usage error
+        assert refused.value.code == 1  # bad input never means book unavailable
 
 
 def test_add_takes_no_token_argument():
-    with pytest.raises(SystemExit):
+    with pytest.raises(SystemExit) as refused:
         cli.add(['--chain', '1', '--token', TOKEN, f'{ADDRESS}=Treasury'])
+    assert refused.value.code == 1
 
 
 def test_add_checks_every_name_before_sending_anything(book):
@@ -349,9 +350,8 @@ def test_add_checks_every_name_before_sending_anything(book):
                   f'{ADDRESS}=bad\x07tag']:
         with pytest.raises(SystemExit):
             cli.add(['--chain', '1', wrong])
-    with pytest.raises(SystemExit) as refused:
-        cli.add(['--chain', '1', f'{ADDRESS}=One', f'{ADDRESS}=Two'])
-    assert 'named twice' in str(refused.value)
+    with pytest.raises(SystemExit):
+        cli.add(['--chain', '1', *[f'{ADDRESS}=Name {i}' for i in range(33)]])
     # Nothing was sent on the way to any of those refusals.
     assert writes(book) == 0
 
@@ -373,27 +373,20 @@ def test_a_hash_in_a_name_survives_file_input(book, tmp_path):
     assert held(book)[(ADDRESS, 'eip155:1')]['tags'] == ['DAO #1']
 
 
-def test_a_conflict_list_this_batch_did_not_ask_for_is_not_filtered_by(book, monkeypatch, capsys):
-    """A 409 naming an address we never sent would otherwise drop the wrong
-    change and report a stranger's name as kept."""
+def test_an_unaccountable_capacity_reply_is_not_retried(book, monkeypatch, capsys):
+    """A malformed 409 cannot silently drop a requested addition."""
     foreign = '0x' + 'ef' * 20
     answers = [
-        (409, {'conflicts': [{'address': foreign, 'scope': 'eip155:1',
-                              'current': {'address': foreign, 'scope': 'eip155:1',
-                                          'tags': ['Someone Else']}}]}),
-        (409, {'conflicts': [{'address': ADDRESS, 'scope': 'eip155:1',
-                              'current': {'address': foreign, 'scope': 'global',
-                                          'tags': ['Someone Else']}}]}),
-        (409, {'conflicts': [{'address': ADDRESS, 'scope': 'eip155:1',
-                              'current': {'address': ADDRESS, 'scope': 'eip155:2',
-                                          'tags': ['Other Chain']}}]}),
-        (409, {'conflicts': [
-            {'address': ADDRESS, 'scope': 'eip155:1',
-             'current': {'address': ADDRESS, 'scope': 'eip155:1', 'tags': ['Mine']}},
-            {'address': ADDRESS, 'scope': 'eip155:1',
-             'current': {'address': ADDRESS, 'scope': 'eip155:1', 'tags': ['Mine']}}]}),
-        (409, {'conflicts': [{'address': ADDRESS, 'scope': 'eip155:1', 'current': None}]}),
-        (409, {'conflicts': 'not a list'}),
+        (409, {'code': 'tag_limit', 'at_capacity': [
+            {'address': foreign, 'scope': 'eip155:1', 'limit': 32,
+             'available': 0, 'requested_new': 1}]}),
+        (409, {'code': 'tag_limit', 'at_capacity': [
+            {'address': ADDRESS, 'scope': 'global', 'limit': 32,
+             'available': 0, 'requested_new': 1}]}),
+        (409, {'code': 'tag_limit', 'at_capacity': [
+            {'address': ADDRESS, 'scope': 'eip155:1', 'limit': 32,
+             'available': 1, 'requested_new': 1}]}),
+        (409, {'code': 'tag_limit', 'at_capacity': 'not a list'}),
         (409, {}),
     ]
     for answer in answers:
@@ -408,11 +401,12 @@ def test_a_conflict_list_this_batch_did_not_ask_for_is_not_filtered_by(book, mon
         assert len(sent) == 1
 
 
-def test_add_reads_either_form_and_collapses_an_exact_duplicate(book):
+def test_add_reads_either_form_and_groups_multiple_names_in_order(book):
     assert cli.add(['--chain', '1', f'{ADDRESS}=Balancer Vault',
-                    f'{ADDRESS}=Balancer Vault', f'{OTHER}  Payroll']) == 0
+                    f'{ADDRESS}=balancer vault', f'{ADDRESS}=Vault #2',
+                    f'{OTHER}  Payroll']) == 0
     assert {key: record['tags'] for key, record in held(book).items()} == {
-        (ADDRESS, 'eip155:1'): ['Balancer Vault'],
+        (ADDRESS, 'eip155:1'): ['Balancer Vault', 'Vault #2'],
         (OTHER, 'eip155:1'): ['Payroll']}
     assert writes(book) == 1
 
@@ -422,34 +416,33 @@ def test_add_creates_a_chain_record_labelled_as_an_investigation(book, capsys):
     record = held(book)[(ADDRESS, 'eip155:1')]
     assert record['tags'] == ['Balancer Vault']
     assert record['source'] == 'agent:investigation'
-    assert 'added' in capsys.readouterr().out
+    assert 'created' in capsys.readouterr().out
 
 
 def test_add_creates_only_global_records_when_asked(book):
     assert cli.add(['--global', f'{ADDRESS}=Known entity wallet']) == 0
     assert list(held(book)) == [(ADDRESS, 'global')]
-    # The server consults only_if_unnamed for a narrower scope than global, so
-    # a global change does not carry a flag that would do nothing.
-    assert cli.changes_from([f'{ADDRESS}=X'], 'global') == [
+    assert cli.additions_from([f'{ADDRESS}=X'], 'global') == [
         {'address': ADDRESS, 'scope': 'global', 'tags': ['X'],
-         'version': None, 'source': 'agent:investigation'}]
+         'source': 'agent:investigation'}]
 
 
-def test_add_never_replaces_a_name_the_book_holds(book, capsys):
+def test_add_appends_without_replacing_the_name_the_book_holds(book, capsys):
     cli.add(['--chain', '1', f'{ADDRESS}=Balancer Vault'])
     book.sent.clear()
     assert cli.add(['--chain', '1', f'{ADDRESS}=Something Else']) == 0
-    assert held(book)[(ADDRESS, 'eip155:1')]['tags'] == ['Balancer Vault']
-    assert 'kept' in capsys.readouterr().out
-    # Every candidate conflicted, so there was nothing to retry.
+    assert held(book)[(ADDRESS, 'eip155:1')]['tags'] == ['Balancer Vault', 'Something Else']
+    assert 'added' in capsys.readouterr().out
     assert writes(book) == 1
 
 
-def test_an_all_networks_name_covers_a_chain_add(book):
+def test_a_chain_add_creates_a_more_specific_record_beside_a_global_name(book):
     cli.add(['--global', f'{ADDRESS}=Mine'])
     book.sent.clear()
     assert cli.add(['--chain', '1', f'{ADDRESS}=Balancer Vault']) == 0
-    assert list(held(book)) == [(ADDRESS, 'global')]
+    assert {(address, scope) for address, scope in held(book)} == {
+        (ADDRESS, 'global'), (ADDRESS, 'eip155:1')}
+    assert cli.look_up(list(held(book).values()), ADDRESS, '1')[0]['label'] == 'Balancer Vault'
     assert writes(book) == 1
 
 
@@ -464,15 +457,23 @@ def test_a_chain_name_keeps_precedence_when_a_global_one_is_added(book):
     assert cli.look_up(snapshot, ADDRESS, '1')[0]['label'] == 'Balancer Vault'
 
 
-def test_add_sends_the_remainder_once_when_one_name_is_taken(book, capsys):
-    cli.add(['--chain', '1', f'{ADDRESS}=Balancer Vault'])
+def test_add_retries_only_the_items_not_at_capacity_and_returns_three(book, capsys):
+    from server import MAX_TAGS
+    # One free slot is not enough for both new names. An existing candidate
+    # must be reported as present, not as a capacity omission.
+    book.put(f'/tags/eip155:1/{ADDRESS}',
+             json={'tags': [f'Name {i}' for i in range(MAX_TAGS - 1)], 'version': None},
+             headers={'Authorization': f'Bearer {TOKEN}'})
     book.sent.clear()
-    assert cli.add(['--chain', '1', f'{ADDRESS}=Something Else', f'{OTHER}=Payroll']) == 0
+    assert cli.add(['--chain', '1', f'{ADDRESS}=Name 0', f'{ADDRESS}=New A',
+                    f'{ADDRESS}=New B', f'{OTHER}=Payroll']) == 3
     assert {key: record['tags'] for key, record in held(book).items()} == {
-        (ADDRESS, 'eip155:1'): ['Balancer Vault'],
+        (ADDRESS, 'eip155:1'): [f'Name {i}' for i in range(MAX_TAGS - 1)],
         (OTHER, 'eip155:1'): ['Payroll']}
     printed = capsys.readouterr().out
-    assert 'kept' in printed and 'added' in printed
+    assert 'Name 0  already present' in printed
+    assert 'New A · New B  not added (tag limit)' in printed
+    assert 'Payroll  created' in printed
     # The conflict, then the remainder. One retry, never a loop.
     assert writes(book) == 2
 
@@ -480,7 +481,7 @@ def test_add_sends_the_remainder_once_when_one_name_is_taken(book, capsys):
 def test_a_repeat_run_changes_nothing(book):
     cli.add(['--chain', '1', f'{ADDRESS}=Balancer Vault', f'{OTHER}=Payroll'])
     before = held(book)
-    assert cli.add(['--chain', '1', f'{ADDRESS}=Balancer Vault', f'{OTHER}=Payroll']) == 0
+    assert cli.add(['--chain', '1', f'{ADDRESS}=balancer vault', f'{OTHER}=Payroll']) == 0
     assert held(book) == before
 
 
@@ -488,7 +489,7 @@ def test_a_reply_that_confirms_nothing_is_not_a_save(book, monkeypatch, capsys):
     """Exit 2 is never a save, and an unconfirmed write is never retried."""
     def unconfirming(url, *, method='GET', token=None, body=None):
         book.sent.append((method, {}))
-        return 200, {'records': []}
+        return 200, {'results': []}
 
     monkeypatch.setattr(cli, 'request', unconfirming)
     assert cli.add(['--chain', '1', f'{ADDRESS}=Balancer Vault']) == 2
@@ -523,7 +524,7 @@ def test_add_reports_a_rejected_token_without_the_secret(book, monkeypatch, caps
 def test_add_sends_a_bearer_header_and_never_an_origin(book):
     cli.add(['--chain', '1', f'{ADDRESS}=Balancer Vault'])
     method, headers = book.sent[-1]
-    assert method == 'PUT'
+    assert method == 'POST'
     assert headers['Authorization'] == f'Bearer {TOKEN}'
     assert not any(name.lower() == 'origin' for name in headers)
 
@@ -538,11 +539,15 @@ def test_the_real_transport_sends_bearer_auth_and_no_origin(monkeypatch, capsys)
     seen = {}
 
     class Handler(BaseHTTPRequestHandler):
-        def do_PUT(self):
+        def do_POST(self):
             seen['headers'] = dict(self.headers)
             seen['body'] = _json.loads(
                 self.rfile.read(int(self.headers['Content-Length'])))
-            payload = _json.dumps({'records': seen['body']['changes']}).encode()
+            item = seen['body']['additions'][0]
+            payload = _json.dumps({'results': [{
+                'address': item['address'], 'scope': item['scope'], 'created': True,
+                'added_tags': item['tags'], 'already_present_tags': [],
+                'record': {**item, 'version': 'test-version'}}]}).encode()
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
             self.send_header('Content-Length', str(len(payload)))
@@ -564,9 +569,9 @@ def test_the_real_transport_sends_bearer_auth_and_no_origin(monkeypatch, capsys)
     assert seen['headers']['Authorization'] == f'Bearer {TOKEN}'
     assert not any(name.lower() == 'origin' for name in seen['headers'])
     assert seen['headers']['Content-Type'] == 'application/json'
-    assert seen['body']['changes'] == [{
+    assert seen['body']['additions'] == [{
         'address': ADDRESS, 'scope': 'eip155:1', 'tags': ['Balancer Vault'],
-        'version': None, 'source': 'agent:investigation', 'only_if_unnamed': True}]
+        'source': 'agent:investigation'}]
     # The token appears in no output of its own.
     printed = capsys.readouterr()
     assert TOKEN not in printed.out and TOKEN not in printed.err
