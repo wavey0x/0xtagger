@@ -411,12 +411,19 @@ def test_add_reads_either_form_and_groups_multiple_names_in_order(book):
     assert writes(book) == 1
 
 
-def test_add_creates_a_chain_record_labelled_as_an_investigation(book, capsys):
+def test_add_creates_a_chain_record_sourced_to_agent(book, capsys):
     assert cli.add(['--chain', '1', f'{ADDRESS}=Balancer Vault']) == 0
     record = held(book)[(ADDRESS, 'eip155:1')]
     assert record['tags'] == ['Balancer Vault']
-    assert record['source'] == 'agent:investigation'
+    assert record['source'] == 'agent'
     assert 'created' in capsys.readouterr().out
+
+
+def test_agent_source_is_named_agent_in_lookup_output(capsys):
+    cli.report([cli.entry({'address': ADDRESS, 'scope': 'eip155:1',
+                           'tags': ['Balancer Vault'], 'source': 'agent'})],
+               'http://127.0.0.1:8712', False)
+    assert 'from Agent' in capsys.readouterr().out
 
 
 def test_add_creates_only_global_records_when_asked(book):
@@ -424,7 +431,7 @@ def test_add_creates_only_global_records_when_asked(book):
     assert list(held(book)) == [(ADDRESS, 'global')]
     assert cli.additions_from([f'{ADDRESS}=X'], 'global') == [
         {'address': ADDRESS, 'scope': 'global', 'tags': ['X'],
-         'source': 'agent:investigation'}]
+         'source': 'agent'}]
 
 
 def test_add_appends_without_replacing_the_name_the_book_holds(book, capsys):
@@ -571,7 +578,7 @@ def test_the_real_transport_sends_bearer_auth_and_no_origin(monkeypatch, capsys)
     assert seen['headers']['Content-Type'] == 'application/json'
     assert seen['body']['additions'] == [{
         'address': ADDRESS, 'scope': 'eip155:1', 'tags': ['Balancer Vault'],
-        'source': 'agent:investigation'}]
+        'source': 'agent'}]
     # The token appears in no output of its own.
     printed = capsys.readouterr()
     assert TOKEN not in printed.out and TOKEN not in printed.err

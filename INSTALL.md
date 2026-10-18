@@ -148,7 +148,7 @@ unclear. One invocation carries one scope; run it again for another. The whole
 batch is checked before anything is sent and normally lands in one atomic
 request. Repeated addresses collect tags in the order given. If only a global
 record exists, a chain addition creates a more specific record that becomes the
-displayed name on that chain. `an investigation` is recorded as the source only
+displayed name on that chain. `Agent` is recorded as the source only
 when a new record is created; an existing record keeps its original source.
 
 Writing presents the book's own token, read from `~/.config/0xtagger/token`:

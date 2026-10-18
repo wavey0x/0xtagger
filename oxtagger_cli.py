@@ -44,12 +44,12 @@ SOURCES = {
     "safe:page": "Safe",
     "etherscan:page": "Etherscan",
     "arkham:api": "Arkham",
-    "agent:investigation": "an investigation",
+    "agent": "Agent",
 }
 
 # The source the records this command writes carry. Mirrors the Literal in
 # server.py; settled when a record is created and never rewritten.
-SOURCE = "agent:investigation"
+SOURCE = "agent"
 # Mirrors MAX_TAG_LENGTH and the batch limit in server.py; checked here only to
 # fail before a round trip rather than after one.
 MAX_TAG_LENGTH = 80

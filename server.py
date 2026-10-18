@@ -62,7 +62,7 @@ class TagWrite(BaseModel):
     # record is created and never rewritten: it describes history, not
     # permission, and it ranks no name above another.
     source: Literal["safe:address-book", "safe:page", "etherscan:page", "arkham:api",
-                    "agent:investigation"] | None = None
+                    "agent"] | None = None
 
     @field_validator("tags")
     @classmethod
@@ -99,7 +99,7 @@ class TagAddition(BaseModel):
     scope: str
     tags: list[str] = Field(min_length=1, max_length=MAX_TAGS)
     source: Literal["safe:address-book", "safe:page", "etherscan:page", "arkham:api",
-                    "agent:investigation"] | None = None
+                    "agent"] | None = None
 
     @field_validator("tags")
     @classmethod

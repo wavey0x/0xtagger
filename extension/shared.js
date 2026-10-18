@@ -75,7 +75,7 @@ export function normalizeTags(values) {
 // history rather than permission — a name corrected later still came from
 // wherever it came from. It ranks nothing and permits nothing.
 export const SOURCES = ['safe:address-book', 'safe:page', 'etherscan:page', 'arkham:api',
-  'agent:investigation'];
+  'agent'];
 
 export function normalizeSource(value) {
   if (value === undefined || value === null || value === '') return null;
@@ -92,7 +92,7 @@ const SOURCE_NAMES = {
   'safe:page': 'Safe',
   'etherscan:page': 'Etherscan',
   'arkham:api': 'Arkham',
-  'agent:investigation': 'an investigation',
+  agent: 'Agent',
 };
 export const sourceName = source => SOURCE_NAMES[source] || '';
 

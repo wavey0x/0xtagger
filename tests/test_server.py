@@ -100,7 +100,7 @@ def add(book, additions):
     return book.post('/tags', json={'additions': additions})
 
 
-def addition(address=ADDRESS, scope='eip155:1', tags=None, source='agent:investigation'):
+def addition(address=ADDRESS, scope='eip155:1', tags=None, source='agent'):
     return {'address': address, 'scope': scope,
             'tags': ['Treasury'] if tags is None else tags, 'source': source}
 
@@ -111,7 +111,7 @@ def test_add_creates_and_appends_in_order_without_replacing_the_primary(book):
     created = first.json()['results'][0]
     assert created['created'] is True
     assert created['added_tags'] == ['Yearn Staker', 'Yearn DAO Staker']
-    assert created['record']['source'] == 'agent:investigation'
+    assert created['record']['source'] == 'agent'
 
     second = add(book, [addition(tags=['yearn staker', 'Voter', 'voter'])])
     assert second.status_code == 200
@@ -120,7 +120,7 @@ def test_add_creates_and_appends_in_order_without_replacing_the_primary(book):
     assert result['added_tags'] == ['Voter']
     assert result['already_present_tags'] == ['yearn staker', 'voter']
     assert result['record']['tags'] == ['Yearn Staker', 'Yearn DAO Staker', 'Voter']
-    assert result['record']['source'] == 'agent:investigation'
+    assert result['record']['source'] == 'agent'
 
 
 def test_add_preserves_an_existing_empty_source_and_a_duplicate_is_a_no_op(book):
@@ -365,12 +365,12 @@ def test_arkham_source_survives_a_batch_write(book):
     assert book.get('/tags').json()['records'][0]['source'] == 'arkham:api'
 
 
-def test_an_investigation_source_survives_a_batch_write(book):
+def test_an_agent_source_survives_a_batch_write(book):
     answer = batch(book, [{'address': ADDRESS, 'scope': 'eip155:1',
                            'tags': ['Balancer Vault'], 'version': None,
-                           'only_if_unnamed': True, 'source': 'agent:investigation'}])
+                           'only_if_unnamed': True, 'source': 'agent'}])
     assert answer.status_code == 200
-    assert book.get('/tags').json()['records'][0]['source'] == 'agent:investigation'
+    assert book.get('/tags').json()['records'][0]['source'] == 'agent'
 
 
 def test_a_batch_carrying_nothing_moves_no_revision(book):
