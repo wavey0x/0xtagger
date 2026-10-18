@@ -11,6 +11,7 @@ import pytest
 import oxtagger_cli as cli
 
 ADDRESS = '0x' + 'ab' * 20
+OTHER = '0x' + 'cd' * 20
 TOKEN = 'test-only-token'
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -241,3 +242,180 @@ def test_only_serve_pays_for_the_web_framework():
          'import oxtagger_cli, sys; print(bool({"fastapi", "uvicorn"} & set(sys.modules)))'],
         capture_output=True, text=True, cwd=ROOT, check=True)
     assert answer.stdout.strip() == 'False'
+
+
+# ---------------------------------------------------------------------------
+# add
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def book(monkeypatch, tmp_path):
+    """The real app, reached the way the command reaches it, counting requests
+    and keeping every header the command chose to send."""
+    from fastapi.testclient import TestClient
+    from server import create_app
+
+    client = TestClient(create_app(tmp_path / 'book.sqlite3', TOKEN))
+    sent = []
+
+    def request(url, *, method='GET', token=None, body=None):
+        headers = {'Authorization': f'Bearer {token}'} if token else {}
+        sent.append((method, headers))
+        from urllib.parse import urlsplit as split
+        answer = client.request(method, split(url).path, headers=headers, json=body)
+        return answer.status_code, answer.json()
+
+    monkeypatch.setattr(cli, 'request', request)
+    configure(book_url='http://127.0.0.1:8712')
+    keep_token()
+    client.sent = sent
+    return client
+
+
+def held(book):
+    answer = book.get('/tags', headers={'Authorization': f'Bearer {TOKEN}'})
+    return {(r['address'], r['scope']): r for r in answer.json()['records']}
+
+
+def writes(book):
+    return [method for method, _ in book.sent].count('PUT')
+
+
+def test_add_requires_exactly_one_scope():
+    for argv in [[f'{ADDRESS}=Treasury'],
+                 ['--chain', '1', '--global', f'{ADDRESS}=Treasury']]:
+        with pytest.raises(SystemExit) as refused:
+            cli.add(argv)
+        assert refused.value.code == 2  # argparse usage error
+
+
+def test_add_takes_no_token_argument():
+    with pytest.raises(SystemExit):
+        cli.add(['--chain', '1', '--token', TOKEN, f'{ADDRESS}=Treasury'])
+
+
+def test_add_checks_every_name_before_sending_anything(book):
+    for wrong in ['0xnope=Treasury', f'{ADDRESS}=', f'{ADDRESS}={"x" * 81}',
+                  f'{ADDRESS}=bad\x07tag']:
+        with pytest.raises(SystemExit):
+            cli.add(['--chain', '1', wrong])
+    with pytest.raises(SystemExit) as refused:
+        cli.add(['--chain', '1', f'{ADDRESS}=One', f'{ADDRESS}=Two'])
+    assert 'named twice' in str(refused.value)
+    # Nothing was sent on the way to any of those refusals.
+    assert writes(book) == 0
+
+
+def test_add_reads_either_form_and_collapses_an_exact_duplicate(book):
+    assert cli.add(['--chain', '1', f'{ADDRESS}=Balancer Vault',
+                    f'{ADDRESS}=Balancer Vault', f'{OTHER}  Payroll']) == 0
+    assert {key: record['tags'] for key, record in held(book).items()} == {
+        (ADDRESS, 'eip155:1'): ['Balancer Vault'],
+        (OTHER, 'eip155:1'): ['Payroll']}
+    assert writes(book) == 1
+
+
+def test_add_creates_a_chain_record_labelled_as_an_investigation(book, capsys):
+    assert cli.add(['--chain', '1', f'{ADDRESS}=Balancer Vault']) == 0
+    record = held(book)[(ADDRESS, 'eip155:1')]
+    assert record['tags'] == ['Balancer Vault']
+    assert record['source'] == 'agent:investigation'
+    assert 'added' in capsys.readouterr().out
+
+
+def test_add_creates_only_global_records_when_asked(book):
+    assert cli.add(['--global', f'{ADDRESS}=Known entity wallet']) == 0
+    assert list(held(book)) == [(ADDRESS, 'global')]
+
+
+def test_add_never_replaces_a_name_the_book_holds(book, capsys):
+    cli.add(['--chain', '1', f'{ADDRESS}=Balancer Vault'])
+    book.sent.clear()
+    assert cli.add(['--chain', '1', f'{ADDRESS}=Something Else']) == 0
+    assert held(book)[(ADDRESS, 'eip155:1')]['tags'] == ['Balancer Vault']
+    assert 'kept' in capsys.readouterr().out
+    # Every candidate conflicted, so there was nothing to retry.
+    assert writes(book) == 1
+
+
+def test_an_all_networks_name_covers_a_chain_add(book):
+    cli.add(['--global', f'{ADDRESS}=Mine'])
+    book.sent.clear()
+    assert cli.add(['--chain', '1', f'{ADDRESS}=Balancer Vault']) == 0
+    assert list(held(book)) == [(ADDRESS, 'global')]
+    assert writes(book) == 1
+
+
+def test_a_chain_name_keeps_precedence_when_a_global_one_is_added(book):
+    cli.add(['--chain', '1', f'{ADDRESS}=Balancer Vault'])
+    assert cli.add(['--global', f'{ADDRESS}=Known entity wallet']) == 0
+    records = held(book)
+    assert records[(ADDRESS, 'eip155:1')]['tags'] == ['Balancer Vault']
+    assert records[(ADDRESS, 'global')]['tags'] == ['Known entity wallet']
+    # What a lookup for that chain reports is still the chain's name.
+    snapshot = list(records.values())
+    assert cli.look_up(snapshot, ADDRESS, '1')[0]['label'] == 'Balancer Vault'
+
+
+def test_add_sends_the_remainder_once_when_one_name_is_taken(book, capsys):
+    cli.add(['--chain', '1', f'{ADDRESS}=Balancer Vault'])
+    book.sent.clear()
+    assert cli.add(['--chain', '1', f'{ADDRESS}=Something Else', f'{OTHER}=Payroll']) == 0
+    assert {key: record['tags'] for key, record in held(book).items()} == {
+        (ADDRESS, 'eip155:1'): ['Balancer Vault'],
+        (OTHER, 'eip155:1'): ['Payroll']}
+    printed = capsys.readouterr().out
+    assert 'kept' in printed and 'added' in printed
+    # The conflict, then the remainder. One retry, never a loop.
+    assert writes(book) == 2
+
+
+def test_a_repeat_run_changes_nothing(book):
+    cli.add(['--chain', '1', f'{ADDRESS}=Balancer Vault', f'{OTHER}=Payroll'])
+    before = held(book)
+    assert cli.add(['--chain', '1', f'{ADDRESS}=Balancer Vault', f'{OTHER}=Payroll']) == 0
+    assert held(book) == before
+
+
+def test_a_reply_that_confirms_nothing_is_not_a_save(book, monkeypatch, capsys):
+    """Exit 2 is never a save, and an unconfirmed write is never retried."""
+    def unconfirming(url, *, method='GET', token=None, body=None):
+        book.sent.append((method, {}))
+        return 200, {'records': []}
+
+    monkeypatch.setattr(cli, 'request', unconfirming)
+    assert cli.add(['--chain', '1', f'{ADDRESS}=Balancer Vault']) == 2
+    assert 'unknown' in capsys.readouterr().err
+    assert writes(book) == 1
+
+
+def test_a_lost_reply_does_not_claim_nothing_was_saved(book, monkeypatch, capsys):
+    monkeypatch.setattr(cli, 'request', lambda *a, **k: (_ for _ in ()).throw(
+        cli.Unavailable('electro.example could not be reached')))
+    assert cli.add(['--chain', '1', f'{ADDRESS}=Balancer Vault']) == 2
+    assert 'unknown' in capsys.readouterr().err
+
+
+def test_add_stops_before_the_request_without_a_token(book, capsys):
+    (cli.config_home() / 'token').unlink()
+    with pytest.raises(SystemExit) as refused:
+        cli.add(['--chain', '1', f'{ADDRESS}=Balancer Vault'])
+    assert str(cli.config_home() / 'token') in str(refused.value)
+    assert writes(book) == 0
+
+
+def test_add_reports_a_rejected_token_without_the_secret(book, monkeypatch, capsys):
+    monkeypatch.setenv('OXTAGGER_TOKEN', 'not-the-token')
+    assert cli.add(['--chain', '1', f'{ADDRESS}=Balancer Vault']) == 2
+    assert held(book) == {}
+    printed = capsys.readouterr().err
+    assert 'did not accept the token' in printed
+    assert 'not-the-token' not in printed
+
+
+def test_add_sends_a_bearer_header_and_never_an_origin(book):
+    cli.add(['--chain', '1', f'{ADDRESS}=Balancer Vault'])
+    method, headers = book.sent[-1]
+    assert method == 'PUT'
+    assert headers['Authorization'] == f'Bearer {TOKEN}'
+    assert not any(name.lower() == 'origin' for name in headers)

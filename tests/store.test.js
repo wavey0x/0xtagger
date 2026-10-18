@@ -800,6 +800,16 @@ test('Arkham provenance survives a book import and is named in the UI', async ()
   assert.equal(sourceName(store.state().records[0].source), 'Arkham');
 });
 
+test('investigation provenance survives a book import and is named in the UI', async () => {
+  const { store } = harness();
+  await store.init();
+  await store.merge(readBookFile(JSON.stringify({ records: [
+    { address, scope: 'eip155:1', tags: ['Balancer Vault'], source: 'agent:investigation' },
+  ] })).records);
+  assert.equal(store.state().records[0].source, 'agent:investigation');
+  assert.equal(sourceName(store.state().records[0].source), 'an investigation');
+});
+
 // An import that adds nothing is not a change, so nothing downstream should be
 // told the book moved — and on a server it should not cost a request either.
 test('an import carrying nothing writes nothing, asks nothing and moves no revision', async () => {

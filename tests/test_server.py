@@ -249,6 +249,14 @@ def test_arkham_source_survives_a_batch_write(book):
     assert book.get('/tags').json()['records'][0]['source'] == 'arkham:api'
 
 
+def test_an_investigation_source_survives_a_batch_write(book):
+    answer = batch(book, [{'address': ADDRESS, 'scope': 'eip155:1',
+                           'tags': ['Balancer Vault'], 'version': None,
+                           'only_if_unnamed': True, 'source': 'agent:investigation'}])
+    assert answer.status_code == 200
+    assert book.get('/tags').json()['records'][0]['source'] == 'agent:investigation'
+
+
 def test_a_batch_carrying_nothing_moves_no_revision(book):
     put(book, ['Treasury'])
     mark = book.get('/tags').headers['etag']

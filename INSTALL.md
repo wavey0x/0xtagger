@@ -125,8 +125,27 @@ configured, because Serve supplies your identity. Elsewhere the book answers
 `401` and the command reports it as unavailable — which is never the same
 answer as an address having no tag.
 
-A future write path will present the book's own token, read from
-`~/.config/0xtagger/token`:
+## Record a name from the terminal
+
+`0xtagger add` writes a name the work established. It only ever creates a
+record: a name already in the book wins and is reported as kept, and nothing is
+replaced or deleted.
+
+```sh
+0xtagger add --chain 1 '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984=UNI Token'
+0xtagger add --chain 1 --file identities.txt   # `ADDRESS Tag` per line, # comments skipped
+0xtagger add --global '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045=vitalik.eth'
+```
+
+`--chain` is the normal choice: a name established on one network belongs to
+that network. `--global` names the address everywhere and is for an identity
+the evidence shows holds across chains, never a fallback when the chain is
+unclear. One invocation carries one scope; run it again for another. The whole
+batch is checked before anything is sent, lands in one atomic request, and
+carries `an investigation` as its source so these records stay distinguishable
+from the ones you tagged by hand.
+
+Writing presents the book's own token, read from `~/.config/0xtagger/token`:
 
 ```sh
 install -m 600 /dev/null ~/.config/0xtagger/token   # then paste the token in
@@ -137,7 +156,12 @@ privately, so rotating it means updating the server, this file, and the
 extension's connection. The command reads it internally and never accepts it as
 an argument or prints it; a token file others can read is refused. The browser
 view's Tailscale identity and `Origin` rules stay a browser boundary — a
-command does not supply those for itself.
+command does not supply those for itself, and `add` sends no `Origin` header.
+
+Exit `0` means every name is accounted for, saved or already held. Exit `1` is
+bad input or configuration, before anything is sent. Exit `2` means a name's
+fate is unknown — a refused token, an unreachable book, or a reply that did not
+confirm the write — and is never a successful save.
 
 ## Data and backups
 

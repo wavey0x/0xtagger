@@ -23,7 +23,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 PROG = "0xtagger"
-COMMANDS = ("serve", "lookup")
+COMMANDS = ("serve", "lookup", "add")
 TIMEOUT = 10
 ADDRESS = re.compile(r"0x[0-9a-f]{40}", re.IGNORECASE)
 CHAIN = re.compile(r"[1-9][0-9]{0,19}")
@@ -43,7 +43,16 @@ SOURCES = {
     "safe:page": "Safe",
     "etherscan:page": "Etherscan",
     "arkham:api": "Arkham",
+    "agent:investigation": "an investigation",
 }
+
+# The source the records this command writes carry. Mirrors the Literal in
+# server.py; settled when a record is created and never rewritten.
+SOURCE = "agent:investigation"
+# Mirrors MAX_TAG_LENGTH and the batch limit in server.py; checked here only to
+# fail before a round trip rather than after one.
+MAX_TAG_LENGTH = 80
+MAX_CHANGES = 5000
 
 
 class Unavailable(Exception):
@@ -151,19 +160,37 @@ def write_token() -> str:
 # The one request this program makes
 # ---------------------------------------------------------------------------
 
-def records_of(url: str) -> list:
-    """One GET, and nothing else anywhere."""
+def request(url: str, *, method: str = "GET", token: str | None = None, body=None):
+    """Return (status, parsed body). No `Origin` is ever sent: that header is
+    the browser view's boundary, not a credential for a command to supply."""
+    data = json.dumps(body).encode() if body is not None else None
+    headers = {"Accept": "application/json"}
+    if data is not None:
+        headers["Content-Type"] = "application/json"
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     opener = urllib.request.build_opener(NoRedirect)
-    request = urllib.request.Request(url + "/tags", headers={"Accept": "application/json"})
+    message = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
-        with opener.open(request, timeout=TIMEOUT) as answer:
-            body = json.load(answer)
+        with opener.open(message, timeout=TIMEOUT) as answer:
+            return answer.status, json.load(answer)
     except urllib.error.HTTPError as error:
-        raise Unavailable(f"the book answered {error.code}") from error
+        # A refusal is an answer worth reading: a conflict carries what stands.
+        try:
+            return error.code, json.load(error)
+        except Exception:
+            raise Unavailable(f"the book answered {error.code}") from error
     except (urllib.error.URLError, TimeoutError, OSError) as error:
         raise Unavailable(f"{urlsplit(url).netloc or url} could not be reached") from error
     except json.JSONDecodeError as error:
         raise Unavailable("the book returned an unreadable reply") from error
+
+
+def records_of(url: str) -> list:
+    """The one request a lookup makes."""
+    status, body = request(url + "/tags")
+    if status != 200:
+        raise Unavailable(f"the book answered {status}")
     records = body.get("records") if isinstance(body, dict) else None
     if not isinstance(records, list) or not all(map(readable, records)):
         # Half a snapshot is not a book. Reading one address out of a reply we
@@ -211,16 +238,18 @@ def entry(record: dict) -> dict:
     }
 
 
+def read_lines(path: str) -> list[str]:
+    if path == "-":
+        return sys.stdin.read().splitlines()
+    try:
+        return Path(path).read_text(encoding="utf-8").splitlines()
+    except OSError as error:
+        sys.exit(f"{PROG}: cannot read {path}: {error.strerror}")
+
+
 def addresses_from(path: str):
     """One or more addresses per line; blank lines and # comments skipped."""
-    if path == "-":
-        text = sys.stdin.read()
-    else:
-        try:
-            text = Path(path).read_text(encoding="utf-8")
-        except OSError as error:
-            sys.exit(f"{PROG}: cannot read {path}: {error.strerror}")
-    for line in text.splitlines():
+    for line in read_lines(path):
         yield from line.split("#", 1)[0].split()
 
 
@@ -329,6 +358,169 @@ def lookup(argv: list[str]) -> int:
 
 
 # ---------------------------------------------------------------------------
+# add
+# ---------------------------------------------------------------------------
+
+def named(text: str) -> tuple[str, str] | None:
+    """One `ADDRESS=Tag` or `ADDRESS Tag`, or None for a blank or comment."""
+    text = text.split("#", 1)[0].strip()
+    if not text:
+        return None
+    address, separator, tag = text.partition("=")
+    if not separator:
+        parts = text.split(None, 1)
+        address, tag = parts[0], (parts[1] if len(parts) > 1 else "")
+    address, tag = address.strip(), tag.strip()
+    if not ADDRESS.fullmatch(address):
+        sys.exit(f"{PROG}: not a full Ethereum address: {address!r}")
+    if not tag:
+        sys.exit(f"{PROG}: no name given for {address}")
+    if len(tag) > MAX_TAG_LENGTH:
+        sys.exit(f"{PROG}: a tag holds at most {MAX_TAG_LENGTH} characters: {tag!r}")
+    if any(ord(character) < 32 or ord(character) == 127 for character in tag):
+        sys.exit(f"{PROG}: a tag holds no control characters: {tag!r}")
+    return address.lower(), tag
+
+
+def changes_from(values, scope: str) -> list[dict]:
+    """Every name checked before anything is sent, so a bad line costs no
+    round trip and half a batch is never on its way."""
+    held: dict[str, str] = {}
+    for value in values:
+        pair = named(value)
+        if pair is None:
+            continue
+        address, tag = pair
+        if held.get(address, tag) != tag:
+            sys.exit(f"{PROG}: {address} is named twice, differently, in one batch")
+        held[address] = tag
+    if len(held) > MAX_CHANGES:
+        sys.exit(f"{PROG}: a batch carries at most {MAX_CHANGES} names")
+    return [
+        # version None asserts nothing stands at this scope yet. For a chain,
+        # only_if_unnamed also asks whether an all-networks name covers the
+        # address; on a global write the server does not consult it, because
+        # the version check above already answers the same question, so it is
+        # left off rather than sent to do nothing.
+        {"address": address, "scope": scope, "tags": [tag], "version": None,
+         "source": SOURCE, **({} if scope == "global" else {"only_if_unnamed": True})}
+        for address, tag in held.items()
+    ]
+
+
+def confirmed(records, change) -> bool:
+    """A save is reported only where the book's reply shows what we asked for."""
+    return any(isinstance(record, dict)
+               and record.get("address") == change["address"]
+               and record.get("scope") == change["scope"]
+               and record.get("tags") == change["tags"]
+               for record in records)
+
+
+def add(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(
+        prog=f"{PROG} add",
+        description="Record a name your work established. Never replaces a name already in the book.",
+        epilog="Writes read the book's token from its configured file; it is never an argument.")
+    parser.add_argument("name", nargs="*", metavar="ADDRESS=TAG",
+                        help="one or more addresses and the name each one has")
+    scope_of = parser.add_mutually_exclusive_group(required=True)
+    scope_of.add_argument("--chain", metavar="ID",
+                          help="the network these names were established on (the normal choice)")
+    scope_of.add_argument("--global", dest="everywhere", action="store_true",
+                          help="name the address on every network: only for an identity "
+                               "the evidence shows holds across chains")
+    parser.add_argument("--file", metavar="PATH",
+                        help="read `ADDRESS Tag` lines from a file, or - for stdin")
+    parser.add_argument("--json", action="store_true", help="machine-readable output")
+    args = parser.parse_args(argv)
+
+    if args.chain and not CHAIN.fullmatch(args.chain):
+        sys.exit(f"{PROG}: not a chain id: {args.chain!r}")
+    if not args.name and not args.file:
+        parser.print_help()
+        return 0
+
+    scope = "global" if args.everywhere else f"eip155:{args.chain}"
+    changes = changes_from(
+        [*args.name, *(read_lines(args.file) if args.file else [])], scope)
+    if not changes:
+        return 0
+
+    try:
+        book, token = book_url(), write_token()
+    except Unconfigured as reason:
+        sys.exit(f"{PROG}: {reason}")
+
+    kept, unsure = [], False
+    try:
+        status, body = request(book + "/tags", method="PUT", token=token,
+                               body={"changes": changes})
+        if status == 409:
+            # Some of these are already named. Those are the book's to keep:
+            # send the rest once and stop. One retry, never a loop.
+            conflicts = body.get("conflicts") if isinstance(body, dict) else None
+            if not isinstance(conflicts, list) or not conflicts:
+                print(f"{PROG}: the book refused the batch and did not say which "
+                      f"names it holds; nothing was written", file=sys.stderr)
+                return 2
+            kept = [held for held in conflicts
+                    if isinstance(held, dict) and readable(held.get("current"))]
+            taken = {(held.get("address"), held.get("scope"))
+                     for held in conflicts if isinstance(held, dict)}
+            changes = [change for change in changes
+                       if (change["address"], change["scope"]) not in taken]
+            if not changes:
+                status, body = 200, {"records": []}
+            else:
+                status, body = request(book + "/tags", method="PUT", token=token,
+                                       body={"changes": changes})
+                if status == 409:
+                    # Named between the two requests. The book keeps what it has.
+                    print(f"{PROG}: the book was written while this batch was being "
+                          f"added; nothing further was written", file=sys.stderr)
+                    return 2
+    except Unavailable as reason:
+        # A lost reply to a PUT does not say the write did not land.
+        print(f"{PROG}: book unavailable: {reason}. Whether anything was saved "
+              f"is unknown", file=sys.stderr)
+        return 2
+
+    if status == 401:
+        print(f"{PROG}: the book did not accept the token", file=sys.stderr)
+        return 2
+    if status != 200:
+        detail = body.get("detail") if isinstance(body, dict) else None
+        print(f"{PROG}: the book answered {status}: {detail or 'refused'}", file=sys.stderr)
+        return 2
+
+    records = body.get("records") if isinstance(body, dict) else None
+    if not isinstance(records, list):
+        records, unsure = [], True
+    saved = [change for change in changes if confirmed(records, change)]
+    if len(saved) != len(changes):
+        unsure = True
+
+    if args.json:
+        print(json.dumps({"saved": saved, "kept": kept,
+                          **({"unconfirmed": True} if unsure else {})}, indent=2))
+    else:
+        for change in saved:
+            print(f"{short(change['address'])}  {change['tags'][0]}  added")
+        for held in kept:
+            current = held["current"]
+            print(f"{short(current['address'])}  {current['tags'][0]}  kept "
+                  f"({scope_name(current['scope'])})")
+        if not saved and not kept and not unsure:
+            print("Nothing to add.")
+    if unsure:
+        print(f"{PROG}: the book did not confirm every name; whether the rest "
+              f"was saved is unknown", file=sys.stderr)
+        return 2
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # Dispatch
 # ---------------------------------------------------------------------------
 
@@ -336,6 +528,7 @@ USAGE = f"""usage: {PROG} <command> [options]
 
   serve    run the address book
   lookup   what your book calls an Ethereum address
+  add      record a name your work established
 
 `{PROG} <command> --help` describes one command.
 """
@@ -355,6 +548,8 @@ def main() -> int:
         return 0
     if name == "lookup":
         return lookup(rest)
+    if name == "add":
+        return add(rest)
     sys.exit(f"{PROG}: no such command: {name!r}. Try: {', '.join(COMMANDS)}")
 
 

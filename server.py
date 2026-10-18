@@ -52,7 +52,8 @@ class TagWrite(BaseModel):
     # Where a record came from, as a kind rather than a host. Set when the
     # record is created and never rewritten: it describes history, not
     # permission, and it ranks no name above another.
-    source: Literal["safe:address-book", "safe:page", "etherscan:page", "arkham:api"] | None = None
+    source: Literal["safe:address-book", "safe:page", "etherscan:page", "arkham:api",
+                    "agent:investigation"] | None = None
 
     @field_validator("tags")
     @classmethod
