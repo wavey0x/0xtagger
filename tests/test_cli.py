@@ -306,6 +306,40 @@ def test_add_checks_every_name_before_sending_anything(book):
     assert writes(book) == 0
 
 
+def test_a_hash_is_a_comment_only_at_the_start_of_a_line(book):
+    """`Curve DAO #1` is a name. Writing half of it would be worse than
+    refusing the line."""
+    assert cli.add(['--chain', '1', f'{ADDRESS}=DA0 #1',
+                    f'{OTHER}  Vault #2 (old)', '# a whole-line comment', '']) == 0
+    assert {key: record['tags'] for key, record in held(book).items()} == {
+        (ADDRESS, 'eip155:1'): ['DA0 #1'],
+        (OTHER, 'eip155:1'): ['Vault #2 (old)']}
+
+
+def test_a_conflict_list_this_batch_did_not_ask_for_is_not_filtered_by(book, monkeypatch, capsys):
+    """A 409 naming an address we never sent would otherwise drop the wrong
+    change and report a stranger's name as kept."""
+    foreign = '0x' + 'ef' * 20
+    answers = [
+        (409, {'conflicts': [{'address': foreign, 'scope': 'eip155:1',
+                              'current': {'address': foreign, 'scope': 'eip155:1',
+                                          'tags': ['Someone Else']}}]}),
+        (409, {'conflicts': [{'address': ADDRESS, 'scope': 'eip155:1', 'current': None}]}),
+        (409, {'conflicts': 'not a list'}),
+        (409, {}),
+    ]
+    for answer in answers:
+        sent = []
+        monkeypatch.setattr(cli, 'request',
+                            lambda *a, _answer=answer, **k: (sent.append(1), _answer)[1])
+        assert cli.add(['--chain', '1', f'{ADDRESS}=Mine']) == 2
+        printed = capsys.readouterr()
+        assert 'nothing was written' in printed.err
+        assert printed.out == ''
+        # Refused, not retried.
+        assert len(sent) == 1
+
+
 def test_add_reads_either_form_and_collapses_an_exact_duplicate(book):
     assert cli.add(['--chain', '1', f'{ADDRESS}=Balancer Vault',
                     f'{ADDRESS}=Balancer Vault', f'{OTHER}  Payroll']) == 0
@@ -326,6 +360,11 @@ def test_add_creates_a_chain_record_labelled_as_an_investigation(book, capsys):
 def test_add_creates_only_global_records_when_asked(book):
     assert cli.add(['--global', f'{ADDRESS}=Known entity wallet']) == 0
     assert list(held(book)) == [(ADDRESS, 'global')]
+    # The server consults only_if_unnamed for a narrower scope than global, so
+    # a global change does not carry a flag that would do nothing.
+    assert cli.changes_from([f'{ADDRESS}=X'], 'global') == [
+        {'address': ADDRESS, 'scope': 'global', 'tags': ['X'],
+         'version': None, 'source': 'agent:investigation'}]
 
 
 def test_add_never_replaces_a_name_the_book_holds(book, capsys):
@@ -419,3 +458,47 @@ def test_add_sends_a_bearer_header_and_never_an_origin(book):
     assert method == 'PUT'
     assert headers['Authorization'] == f'Bearer {TOKEN}'
     assert not any(name.lower() == 'origin' for name in headers)
+
+
+def test_the_real_transport_sends_bearer_auth_and_no_origin(monkeypatch, capsys):
+    """The other credential tests replace `request`; this one runs it, so the
+    headers asserted here are the headers that go on the wire."""
+    import json as _json
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    seen = {}
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_PUT(self):
+            seen['headers'] = dict(self.headers)
+            seen['body'] = _json.loads(
+                self.rfile.read(int(self.headers['Content-Length'])))
+            payload = _json.dumps({'records': seen['body']['changes']}).encode()
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, *args):
+            pass
+
+    httpd = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        configure(book_url=f'http://127.0.0.1:{httpd.server_address[1]}')
+        keep_token()
+        assert cli.add(['--chain', '1', f'{ADDRESS}=Balancer Vault']) == 0
+    finally:
+        httpd.shutdown()
+
+    assert seen['headers']['Authorization'] == f'Bearer {TOKEN}'
+    assert not any(name.lower() == 'origin' for name in seen['headers'])
+    assert seen['headers']['Content-Type'] == 'application/json'
+    assert seen['body']['changes'] == [{
+        'address': ADDRESS, 'scope': 'eip155:1', 'tags': ['Balancer Vault'],
+        'version': None, 'source': 'agent:investigation', 'only_if_unnamed': True}]
+    # The token appears in no output of its own.
+    printed = capsys.readouterr()
+    assert TOKEN not in printed.out and TOKEN not in printed.err

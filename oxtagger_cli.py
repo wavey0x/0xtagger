@@ -362,9 +362,14 @@ def lookup(argv: list[str]) -> int:
 # ---------------------------------------------------------------------------
 
 def named(text: str) -> tuple[str, str] | None:
-    """One `ADDRESS=Tag` or `ADDRESS Tag`, or None for a blank or comment."""
-    text = text.split("#", 1)[0].strip()
-    if not text:
+    """One `ADDRESS=Tag` or `ADDRESS Tag`, or None for a blank or comment.
+
+    A `#` only starts a comment at the start of a line. A name may contain one
+    — `Curve DAO #1` is a tag, not a tag and a remark — and silently writing
+    half of it would be worse than refusing the line.
+    """
+    text = text.strip()
+    if not text or text.startswith("#"):
         return None
     address, separator, tag = text.partition("=")
     if not separator:
@@ -459,15 +464,22 @@ def add(argv: list[str]) -> int:
         if status == 409:
             # Some of these are already named. Those are the book's to keep:
             # send the rest once and stop. One retry, never a loop.
+            # Every conflict must name something this batch actually asked
+            # for. A list we cannot account for is not a list to filter by:
+            # it would drop the wrong change, or report a name as kept that
+            # was never ours to ask about.
             conflicts = body.get("conflicts") if isinstance(body, dict) else None
-            if not isinstance(conflicts, list) or not conflicts:
+            asked = {(change["address"], change["scope"]) for change in changes}
+            if (not isinstance(conflicts, list) or not conflicts
+                    or not all(isinstance(held, dict)
+                               and (held.get("address"), held.get("scope")) in asked
+                               and readable(held.get("current"))
+                               for held in conflicts)):
                 print(f"{PROG}: the book refused the batch and did not say which "
-                      f"names it holds; nothing was written", file=sys.stderr)
+                      f"of these names it holds; nothing was written", file=sys.stderr)
                 return 2
-            kept = [held for held in conflicts
-                    if isinstance(held, dict) and readable(held.get("current"))]
-            taken = {(held.get("address"), held.get("scope"))
-                     for held in conflicts if isinstance(held, dict)}
+            kept = list(conflicts)
+            taken = {(held["address"], held["scope"]) for held in conflicts}
             changes = [change for change in changes
                        if (change["address"], change["scope"]) not in taken]
             if not changes:
