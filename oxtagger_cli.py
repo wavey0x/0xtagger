@@ -95,7 +95,13 @@ def book_url() -> str:
             f'no book configured. Put {{"book_url": "https://…"}} in '
             f"{config_home() / 'config.json'}, or set OXTAGGER_BOOK_URL")
     raw = str(raw).rstrip("/")
-    parts = urlsplit(raw)
+    try:
+        parts = urlsplit(raw)
+        parts.port  # Raises on a port that is not a number, or out of range.
+    except ValueError as error:
+        # Nothing of the value is repeated: a URL this malformed may still be a
+        # mangled connect link, and a misconfiguration is not an outage.
+        raise Unconfigured(f"that book URL cannot be read as a URL: {error}") from error
     # The extension's connect link carries the book's key in its fragment, so a
     # pasted link must not become the configured URL — and must not be echoed
     # back in the refusal either. The server refuses these same shapes.

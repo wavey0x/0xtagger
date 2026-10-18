@@ -128,6 +128,21 @@ def test_a_snapshot_it_can_read_is_reported(served, capsys):
     assert 'Treasury' in capsys.readouterr().out
 
 
+def test_a_url_that_cannot_be_parsed_is_a_misconfiguration_not_an_outage():
+    """Reported as bad configuration, exit 1, rather than left to fail later as
+    an unreachable book — and never with a traceback."""
+    secret = 'test-only-not-a-real-key'
+    for raw in ['https://host:notaport/0xtagger', 'https://host:99999/0xtagger',
+                f'https://[oops/0xtagger#key={secret}']:
+        configure(book_url=raw)
+        with pytest.raises(cli.Unconfigured) as refused:
+            cli.book_url()
+        assert secret not in str(refused.value)
+        with pytest.raises(SystemExit) as exit_code:
+            cli.lookup([ADDRESS])
+        assert exit_code.value.code != 2
+
+
 def test_the_environment_overrides_the_configured_book(monkeypatch):
     configure(book_url='https://electro.example/0xtagger')
     monkeypatch.setenv('OXTAGGER_BOOK_URL', 'http://127.0.0.1:8712')
