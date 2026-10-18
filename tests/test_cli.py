@@ -121,6 +121,28 @@ def test_a_reply_this_program_cannot_read_is_not_a_book(served, capsys):
         assert printed.out == ''
 
 
+def test_an_invalid_port_does_not_repeat_what_was_configured(capsys):
+    """Python names the offending port in its own message, so the refusal must
+    not pass that message along."""
+    secret = 'test-only-sentinel'
+    configure(book_url=f'https://host:{secret}/0xtagger')
+    with pytest.raises(SystemExit) as refused:
+        cli.lookup([ADDRESS])
+    assert secret not in str(refused.value)
+    assert secret not in capsys.readouterr().err
+
+
+def test_a_record_naming_no_address_or_scope_is_not_readable():
+    """A junk address would print as a short form of junk under --find."""
+    assert not cli.readable({'address': 'not-an-address', 'scope': 'global', 'tags': ['X']})
+    assert not cli.readable({'address': ADDRESS, 'scope': 'nonsense', 'tags': ['X']})
+    assert cli.readable({'address': ADDRESS, 'scope': 'eip155:8453', 'tags': ['X']})
+    # What the reader has no business judging.
+    assert cli.readable({'address': ADDRESS, 'scope': 'global', 'tags': ['x' * 200]})
+    assert cli.readable({'address': ADDRESS, 'scope': 'global', 'tags': ['X'],
+                         'source': 'some:future-source'})
+
+
 def test_a_snapshot_it_can_read_is_reported(served, capsys):
     configure(book_url=served({'records': [
         {'address': ADDRESS, 'scope': 'global', 'tags': ['Treasury']}]}))

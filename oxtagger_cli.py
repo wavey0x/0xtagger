@@ -27,6 +27,8 @@ COMMANDS = ("serve", "lookup")
 TIMEOUT = 10
 ADDRESS = re.compile(r"0x[0-9a-f]{40}", re.IGNORECASE)
 CHAIN = re.compile(r"[1-9][0-9]{0,19}")
+# Mirrors the scopes the server will store: global, or one chain.
+SCOPE = re.compile(r"global|eip155:[1-9][0-9]{0,19}")
 LOOPBACK = {"127.0.0.1", "localhost", "::1"}
 
 # Mirrors extension/networks.js. A record names its own scope; this only makes
@@ -99,9 +101,11 @@ def book_url() -> str:
         parts = urlsplit(raw)
         parts.port  # Raises on a port that is not a number, or out of range.
     except ValueError as error:
-        # Nothing of the value is repeated: a URL this malformed may still be a
-        # mangled connect link, and a misconfiguration is not an outage.
-        raise Unconfigured(f"that book URL cannot be read as a URL: {error}") from error
+        # Not a word of the value is repeated, not even through the exception:
+        # Python names the offending port in its own message, and a URL this
+        # malformed may still be a mangled connect link.
+        raise Unconfigured("that book URL cannot be read as a URL. Check the "
+                           "scheme, host and port of the configured value") from error
     # The extension's connect link carries the book's key in its fragment, so a
     # pasted link must not become the configured URL — and must not be echoed
     # back in the refusal either. The server refuses these same shapes.
@@ -169,10 +173,14 @@ def records_of(url: str) -> list:
 
 
 def readable(record) -> bool:
-    """A record this program can report on: named, scoped, and actually named."""
+    """A record this program can report on: an address and scope it can name,
+    and at least one tag to print. Nothing else is its business — a tag longer
+    than today's limit, or a source it has never heard of, still reads fine."""
     return (isinstance(record, dict)
             and isinstance(record.get("address"), str)
+            and ADDRESS.fullmatch(record["address"]) is not None
             and isinstance(record.get("scope"), str)
+            and SCOPE.fullmatch(record["scope"]) is not None
             and isinstance(record.get("tags"), list)
             and bool(record["tags"])
             and all(isinstance(tag, str) for tag in record["tags"]))
