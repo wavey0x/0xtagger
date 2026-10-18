@@ -61,7 +61,7 @@ function render(next = state) {
     // Searchable by where it came from too, so "safe" finds everything a Safe
     // book brought in without anyone having to remember which names those were.
     .map(record => ({ record, row: null,
-      text: [record.address, ...record.tags, sourceName(record.source)].join('\n').toLocaleLowerCase() }))
+      text: [record.address, ...record.tags, scopeName(record.scope), sourceName(record.source)].join('\n').toLocaleLowerCase() }))
     .sort((one, two) => one.record.tags[0].localeCompare(two.record.tags[0]) ||
       one.record.address.localeCompare(two.record.address));
   if (editor) editor.updateState(state);
@@ -86,17 +86,16 @@ function edit(address, scope = 'global') {
 function bookRow(record) {
   const displayAddress = checksumAddress(record.address);
   const row = document.createElement('tr');
-  row.innerHTML = '<td><button class="record"><strong></strong><small></small></button></td><td><code></code></td><td></td>';
+  row.innerHTML = '<td class="tag-cell"><button class="record"><strong></strong></button></td><td class="address-cell"><div class="address-value"><code class="address-full"></code><code class="address-short" aria-hidden="true"></code></div></td><td class="network-cell"></td><td class="source-cell"></td>';
   const open = row.querySelector('.record');
   open.querySelector('strong').textContent = record.tags.join(' · ');
-  // Where a name came from sits with the network it stands on, under the name
-  // itself: a column of its own would be empty on every record anybody typed,
-  // and this is the one place the question gets asked.
-  open.querySelector('small').textContent = [scopeName(record.scope),
-    record.source && `from ${sourceName(record.source)}`].filter(Boolean).join(' · ');
   open.dataset.tip = displayAddress; open.setAttribute('aria-label', `Edit tags for ${displayAddress}`);
   open.onclick = () => edit(record.address, record.scope);
-  row.querySelector('code').textContent = displayAddress;
+  row.querySelector('.address-full').textContent = displayAddress;
+  row.querySelector('.address-short').textContent = `${displayAddress.slice(0, 8)}…${displayAddress.slice(-4)}`;
+  row.querySelector('.address-cell').setAttribute('aria-label', displayAddress);
+  row.querySelector('.network-cell').textContent = scopeName(record.scope);
+  row.querySelector('.source-cell').textContent = sourceName(record.source) || '—';
   const copy = document.createElement('button'); copy.className = 'quiet icon copy'; copy.innerHTML = COPY_ICON;
   copy.setAttribute('aria-label', `Copy ${displayAddress}`); copy.dataset.tip = `Copy ${displayAddress}`;
   copy.onclick = async () => {
@@ -104,12 +103,15 @@ function bookRow(record) {
       await navigator.clipboard.writeText(displayAddress);
       confirmCopied(copy, `Copied ${displayAddress}`);
     } catch {
-      const range = document.createRange(); range.selectNodeContents(row.querySelector('code'));
+      // Reveal the full value before selecting it: the compact address is only
+      // display text, never a value anyone should copy by accident.
+      row.classList.add('show-full-address');
+      const range = document.createRange(); range.selectNodeContents(row.querySelector('.address-full'));
       getSelection().removeAllRanges(); getSelection().addRange(range);
       tell('Address selected. Copy it with your keyboard.');
     }
   };
-  row.lastElementChild.append(copy);
+  row.querySelector('.address-value').append(copy);
   return row;
 }
 // A screenful at a time. Building a row for every address in a large book

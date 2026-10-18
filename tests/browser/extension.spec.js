@@ -298,6 +298,10 @@ test('installed extension: a book that works with no setup, moving it to a serve
     await expect(book.locator('.record')).toHaveAttribute('data-tip', checksumAddress(added));
     await book.locator('#search').fill(added.toUpperCase());
     await expect(book.locator('.record')).toHaveCount(1);
+    await book.setViewportSize({ width: 375, height: 800 });
+    await expect(book.locator('#results .address-short')).toBeVisible();
+    await expect(book.locator('#results .address-full')).toBeHidden();
+    await expect(book.locator('#results .address-value .copy')).toHaveCount(1);
     await book.bringToFront();
     await book.locator('#results .copy').click();
     // Keep the book focused until the clipboard write completes.
@@ -306,6 +310,7 @@ test('installed extension: a book that works with no setup, moving it to a serve
     expect(await website.evaluate(() => navigator.clipboard.readText())).toBe(checksumAddress(added));
 
     await book.bringToFront();
+    await book.setViewportSize({ width: 1280, height: 800 });
     const downloadPromise=book.waitForEvent('download');
     await book.locator('#export').click(); const download=await downloadPromise;
     const exported=JSON.parse(await readFile(await download.path(),'utf8'));
@@ -513,16 +518,22 @@ test('installed extension: a file is reviewed before it lands, and a page cannot
     await expect(book.locator('#review')).toBeHidden();
     await expect(book.locator('#message')).toContainText('1 name imported');
     await expect(book.locator('#results tr')).toHaveCount(2);
-    // Where a name came from is answerable from the book, under the name, with
-    // the network it stands on — and searchable, so one question finds them all.
-    await expect(book.locator('#results tr', { hasText: 'dudesahn' }).locator('small'))
-      .toHaveText("All networks · from Safe's address book");
-    await expect(book.locator('#results tr', { hasText: 'Treasury' }).locator('small'))
+    // Network and source have separate fields, and both remain searchable.
+    await expect(book.locator('#results tr', { hasText: 'dudesahn' }).locator('.network-cell'))
       .toHaveText('All networks');
+    await expect(book.locator('#results tr', { hasText: 'dudesahn' }).locator('.source-cell'))
+      .toHaveText("Safe's address book");
+    await expect(book.locator('#results tr', { hasText: 'Treasury' }).locator('.source-cell'))
+      .toHaveText('—');
     await book.locator('#search').fill('safe');
     await expect(book.locator('#results tr')).toHaveCount(1);
     await expect(book.locator('#results tr')).toContainText('dudesahn');
     await book.locator('#search').fill('');
+    await book.setViewportSize({ width: 375, height: 800 });
+    await book.locator('#results tr', { hasText: 'dudesahn' }).locator('.record').click();
+    await expect(book.getByRole('dialog', { name: 'Edit wallet tags' })).toContainText("Source: Safe's address book");
+    await book.getByRole('button', { name: 'Close editor' }).click();
+    await book.setViewportSize({ width: 1280, height: 800 });
     // The name already held was never touched, and the new one kept its origin.
     const held = await book.evaluate(async () =>
       (await chrome.runtime.sendMessage({ type: 'State' })).result.state.records);

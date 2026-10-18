@@ -20,11 +20,18 @@ th { font-size: 10px; font-weight: 600; color: var(--0xtagger-muted); }
 th:first-child { width: 40%; }
 th:last-child { width: 48px; }
 tr:last-child td { border-bottom: 0; }
+.records-table { table-layout: fixed; }
+.records-table th:first-child { width: 35%; }
+.records-table th:nth-child(2) { width: 39%; }
+.records-table th:nth-child(3),.records-table th:nth-child(4) { width: 13%; }
+.records-table .network-cell,.records-table .source-cell { color: var(--0xtagger-muted); font-size: 11px; }
 .record { max-width: 100%; text-align: left; padding: 0; color: var(--0xtagger-ink); background: none; }
 .record:hover strong { color: var(--0xtagger-accent); }
 .record strong { display: block; font-size: 13px; font-weight: 700; overflow-wrap: anywhere; }
-.record small { display: block; margin-top: 3px; color: var(--0xtagger-muted); font-size: 10px; font-weight: 400; }
-td code { display: block; font: 12px/1.6 ui-monospace, monospace; overflow-wrap: anywhere; }
+.address-value { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.address-value code { display: block; min-width: 0; font: 12px/1.6 ui-monospace, monospace; overflow-wrap: anywhere; }
+.address-value .address-short { display: none; }
+.address-value .copy { flex-shrink: 0; }
 .copy { color: var(--0xtagger-muted); }
 #empty { padding: 36px 16px; text-align: center; color: var(--0xtagger-muted); font-size: 13px; }
 #empty p { margin: 0 0 8px; }
@@ -33,7 +40,32 @@ td code { display: block; font: 12px/1.6 ui-monospace, monospace; overflow-wrap:
 .book-footer { margin-top: 12px; }
 #sync[data-offline="true"] { color: var(--0xtagger-warning); }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-@media (max-width: 600px) { .book { width: calc(100% - 24px); padding: 16px 0; } .book-header { margin-bottom: 28px; } .book-header .connection-line { width: 180px; } th,td { padding: 10px; } th:first-child { width: 35%; } td code { font-size: 10px; } .book-tools { gap: 8px; } }
+@media (max-width: 970px) {
+  .records-table .address-full { display: none; }
+  .records-table .address-short { display: block; }
+  .records-table .show-full-address .address-full { display: block; }
+  .records-table .show-full-address .address-short { display: none; }
+}
+@media (max-width: 600px) {
+  .book { width: calc(100% - 24px); padding: 16px 0; }
+  .book-header { margin-bottom: 28px; }
+  .book-header .connection-line { width: 180px; }
+  .book-tools { display: grid; grid-template-columns: minmax(0,1fr) auto auto; gap: 8px; }
+  #search { grid-column: 1 / -1; min-width: 0; max-width: none; margin-right: 0; }
+  #import { grid-column: 2; }
+  #export { grid-column: 3; }
+  .records-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .records-table tbody { display: block; }
+  .records-table tr { display: grid; grid-template-columns: minmax(0,1fr) auto; grid-template-areas: 'tag tag' 'network address'; column-gap: 10px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--0xtagger-line); }
+  .records-table tr:last-child { border-bottom: 0; }
+  .records-table td { min-width: 0; padding: 0; border: 0; }
+  .records-table .tag-cell { grid-area: tag; margin-bottom: 3px; }
+  .records-table .network-cell { grid-area: network; font-size: 10px; }
+  .records-table .address-cell { grid-area: address; justify-self: end; }
+  .records-table .address-value code { font-size: 11px; }
+  .records-table .source-cell { display: none; }
+  .records-table .show-full-address .address-cell { grid-column: 1 / -1; justify-self: stretch; }
+}
 #remove-name { margin-top: 10px; }
 
 /* One screen you read: what will be added, where it is going, and one button.

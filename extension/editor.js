@@ -83,9 +83,10 @@ export function createEditor(container, { address, scope = 'global', state, save
   if (modal) panel.showModal();
   const get = selector => panel.querySelector(selector);
   get('code').textContent = displayAddress;
-  get('.source').textContent = bookName;
-  get('.source').title = bookName ? `Saving to ${bookName}` : 'Saving to your address book';
-  get('.source').setAttribute('aria-label', bookName ? `Saving to ${bookName}` : 'Saving to your address book');
+  const origin = modal && own?.source ? `Source: ${sourceName(own.source)}` : '';
+  get('.source').textContent = [bookName, origin].filter(Boolean).join(' · ');
+  get('.source').title = [bookName ? `Saving to ${bookName}` : 'Saving to your address book', origin].filter(Boolean).join(' · ');
+  get('.source').setAttribute('aria-label', get('.source').title);
   get('.copy').title = `Copy ${displayAddress}`;
   get('.save').title = bookName ? `Save to ${bookName}` : 'Save';
   function outside(event) {
