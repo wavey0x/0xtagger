@@ -250,6 +250,37 @@ const safeAdapter = site({
   },
 });
 
+// The ranking renders two abbreviated labels for each address, one for narrow
+// screens. Neither label proves identity; the Ethereum explorer link and its
+// full-address title do, and must agree. Keep the copy button and membership
+// badges beside the link in the site's own hands.
+// seen: styfi.wavey.info/ — load the ranking, then search or sort Address;
+//       narrow the viewport to see the compact label — 2026-10-18.
+const STYFI_ADDRESS = '#ranking-body > tr > td.account .address-line > a.address-link';
+
+const styfiAdapter = site({
+  id: 'stYFI',
+  matches: url => url.hostname === 'styfi.wavey.info',
+  probe({ document }) {
+    if (document.readyState === 'loading') return { status: 'waiting' };
+    if (!document.querySelector('main .ranking #ranking-body') ||
+        !document.querySelector('thead [data-sort="address"]')) {
+      return { status: 'stale', reason: 'styfi-ranking-missing' };
+    }
+    return { status: 'ready', network: 'eip155:1' };
+  },
+  rules: {
+    targets: STYFI_ADDRESS,
+    attributes: ['title'],
+    anchors: STYFI_ADDRESS,
+    skip: element => {
+      const link = addressLink(element, element.baseURI);
+      const title = parseAddress(element.getAttribute('title'));
+      return link?.network !== 'eip155:1' || !title || link.address !== title;
+    },
+  },
+});
+
 const genericAdapter = site({
   id: 'This site',
   matches: () => true,
@@ -264,4 +295,4 @@ const genericAdapter = site({
   },
 });
 
-export const adapters = [etherscanAdapter, safeAdapter, genericAdapter];
+export const adapters = [etherscanAdapter, safeAdapter, styfiAdapter, genericAdapter];

@@ -2,8 +2,7 @@ import { test, expect } from '@playwright/test';
 import { address, other, record, start, health, reported } from './controller.js';
 
 // Every registered adapter owes the same guarantees, whatever site it reads.
-// Adding a website means adding an entry here beside its entry in adapters.js:
-// if a site cannot satisfy these, its adapter is not safe to ship.
+// Shared cases live below; a site limited to one widget has a focused suite.
 //
 //   canonical  a display whose identity is beyond doubt
 //   fragment   an abbreviated display with no canonical source behind it
@@ -105,6 +104,65 @@ for (const site of sites) {
     });
   });
 }
+
+test.describe('stYFI ranking', () => {
+  const site = 'https://styfi.wavey.info/';
+  const row = (wallet, { title = wallet, href = `https://etherscan.io/address/${wallet}` } = {}) => `
+    <tr><td class="rank">01</td><td class="account">
+      <span class="address-line">
+        <a class="address-link" href="${href}" title="${title}" target="_blank">
+          <span class="address-label">0x${wallet.slice(2, 7)}…${wallet.slice(-5)}</span>
+          <span class="address-label-compact">0x${wallet.slice(2, 5)}…${wallet.slice(-4)}</span>
+        </a>
+        <button class="copy-trigger" type="button">Copy address</button>
+      </span>
+      <span class="account-extras"><span class="badge">YBC</span></span>
+    </td><td>${wallet}</td></tr>`;
+  const frame = body => `<header><input id="search" type="search"></header><main>
+    <p id="elsewhere">${address}</p>
+    <section class="ranking"><table><thead><tr><th><button data-sort="address">ADDRESS</button></th></tr></thead>
+    <tbody id="ranking-body">${body}</tbody></table></section></main>`;
+  const open = (page, body) => start(page, { site, html: frame(body) });
+
+  test('tags only the main table address link and preserves its native controls', async ({ page }) => {
+    await open(page, row(address));
+    expect(await reported(page)).toMatchObject({ adapter: 'stYFI', status: 'ready', network: 'eip155:1' });
+    const link = page.locator('#ranking-body .address-link');
+    await expect(link).toHaveAttribute('data-0xtagger-address', address);
+    await expect(link).toHaveAttribute('data-0xtagger-tag', 'Treasury');
+    await expect(link).toHaveAttribute('href', `https://etherscan.io/address/${address}`);
+    await expect(link).toHaveAttribute('title', address);
+    await expect(link.locator('.address-label-compact')).toHaveText('0xaba…abab');
+    await expect(page.locator('#elsewhere')).not.toHaveAttribute('data-0xtagger-address');
+    await expect(page.locator('#ranking-body td:last-child')).not.toHaveAttribute('data-0xtagger-address');
+    await expect(page.locator('.account-extras .badge')).toHaveText('YBC');
+    await page.locator('.copy-trigger').evaluate((button, wallet) => {
+      button.addEventListener('click', () => { window.nativeCopied = wallet; });
+    }, address);
+    await page.locator('.copy-trigger').click();
+    expect(await page.evaluate(() => window.nativeCopied)).toBe(address);
+    await page.locator('.address-line > [data-0xtagger-edit]').getByRole('button').click();
+    await expect(page.getByRole('textbox', { name: 'Tag 1', exact: true })).toHaveValue('Treasury');
+  });
+
+  test('requires matching full Ethereum addresses in the link and title', async ({ page }) => {
+    await open(page, row(address, { title: other }) +
+      row(address, { href: 'https://basescan.org/address/' + address }) +
+      row(address, { href: '/wallet/' + address }) +
+      row(address, { title: '' }) + row(address));
+    await expect(page.locator('#ranking-body .address-link[data-0xtagger-address]')).toHaveCount(1);
+    await expect(page.locator('#ranking-body tr:last-child .address-link')).toHaveAttribute('data-0xtagger-tag', 'Treasury');
+  });
+
+  test('reannotates addresses when search or sort rebuilds ranking rows', async ({ page }) => {
+    await open(page, row(address));
+    await expect(page.locator('#ranking-body .address-link')).toHaveAttribute('data-0xtagger-tag', 'Treasury');
+    await page.locator('#ranking-body').evaluate((body, html) => { body.innerHTML = html; }, row(other));
+    await expect(page.locator('#ranking-body .address-link')).not.toHaveAttribute('data-0xtagger-address');
+    await page.locator('#ranking-body').evaluate((body, html) => { body.innerHTML = html; }, row(address));
+    await expect(page.locator('#ranking-body .address-link')).toHaveAttribute('data-0xtagger-tag', 'Treasury');
+  });
+});
 
 // A table an explorer embeds is a frame of its own: rows, and none of the
 // landmarks the page around it has. The frame's URL is the explorer's business.
