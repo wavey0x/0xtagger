@@ -44,7 +44,26 @@ const TIP = '[data-bs-toggle="tooltip"],[title]';
 //       — expand any function returning an address — 2026-10-16.
 const CONTRACT_READER = '.js-read-contract-function';
 
+// Holder rows link back to the token with the holder in ?a=. Named holders do
+// not carry the data-highlight-target used by the unnamed rows; the same full
+// address is on their own copy control beside the link.
+// seen: etherscan.io/token/0x863a0d8bfc940969087bec4e4f1824f312a21565
+//       — Holders, rows 8–16 — 2026-10-19.
+const HOLDER_LINK = '#theadHolderTable + tbody td:nth-child(2) a[href*="/token/"][href*="?a="]';
+const holderAddress = (element, url) => {
+  if (!element.matches(HOLDER_LINK)) return null;
+  let link;
+  try { link = new URL(element.getAttribute('href'), url); }
+  catch { return null; }
+  const token = parseAddress(link.pathname.match(/^\/token\/(0x[0-9a-f]{40})$/i)?.[1]);
+  const holdersToken = parseAddress(url.searchParams.get('a'));
+  const holders = link.searchParams.getAll('a');
+  const holder = holders.length === 1 && parseAddress(holders[0]);
+  const copied = parseAddress(element.closest('td')?.querySelector('.js-clipboard[data-clipboard-text]')?.getAttribute('data-clipboard-text'));
+  return link.origin === url.origin && token && token === holdersToken && holder === copied ? holder : null;
+};
 // A name cut short to fit is not a name: whatever stands in the field is what
+
 // Save would store. The whole of it is written in a tooltip, and the explorer's
 // own script takes that tooltip over and the title out of the markup before
 // anyone can click a row, so a row showing half a name is offering nothing.
@@ -71,13 +90,14 @@ const etherscanAdapter = site({
   id: 'Etherscan',
   source: 'etherscan:page',
   // What the explorer calls this address: its public name tag, which is the
-  // same element a tag is allowed to stand in for. Two of its displays carry
-  // no name tag and name the thing themselves — a token row, and a link whose
-  // text is the name with the address kept out of sight — so that is what the
-  // explorer is calling them.
+  // same element a tag is allowed to stand in for. Several displays carry
+  // no name tag and name the thing themselves — a token row, a holder row,
+  // and a link whose text is the name with the address kept out of sight.
   names: element => {
     const tagged = element.matches('.hash-tag') ? element : element.querySelector('.hash-tag');
-    return tagged ? whole(tagged) : tokenName(element) || linkName(element);
+    if (tagged) return whole(tagged);
+    if (element.matches(HOLDER_LINK)) return /0x[0-9a-f]/i.test(element.textContent) ? null : whole(element);
+    return tokenName(element) || linkName(element);
   },
   // The seen: pages above are Etherscan observations, not proof that every
   // explorerNetwork host serves the same markup.
@@ -123,11 +143,11 @@ const etherscanAdapter = site({
   },
   rules: {
     // Includes homepage fee-recipient links, which have no .hash-tag child.
-    targets: '#mainaddress,[data-highlight-target],a[href*="/address/"],a[href*="/address/"] .hash-tag,[data-full-address]',
+    targets: `#mainaddress,[data-highlight-target],a[href*="/address/"],a[href*="/address/"] .hash-tag,[data-full-address],${HOLDER_LINK}`,
     attributes: ['data-full-address', 'data-highlight-target', 'data-address', 'title', 'aria-label'],
     identifies: ['data-full-address'],
     anchors: '#mainaddress,[data-highlight-target]',
-    named: `.hash-tag,[data-highlight-value],${SEARCH_ROW},${FUNDED_BY}`,
+    named: `.hash-tag,[data-highlight-value],${SEARCH_ROW},${FUNDED_BY},${HOLDER_LINK}`,
     denied: 'nav',
     // An owners or holders menu is content, not navigation: its rows name real
     // wallets, under whatever the explorer already calls them.
@@ -135,11 +155,11 @@ const etherscanAdapter = site({
     // The innermost verified address widget owns the annotation.
     skip: element => !element.matches('#mainaddress,[data-highlight-target]') &&
       element.querySelector('[data-highlight-target],.hash-tag'),
-    // ENS search links name the domain in their URL. The row supplies the
-    // resolved address separately; accept only complete, consistent values.
-    sources: element => element.matches(SEARCH_ROW)
+    // ENS search rows resolve the domain beside its link; token holder rows
+    // put the wallet in the link query and its native copy control.
+    sources: (element, url) => element.matches(SEARCH_ROW)
       ? query(element.parentElement, 'span').map(node => parseAddress(node.textContent.trim()))
-      : [],
+      : [holderAddress(element, url)],
   },
 });
 

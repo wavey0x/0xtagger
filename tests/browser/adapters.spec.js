@@ -210,6 +210,49 @@ test.describe('Etherscan embedded transfers', () => {
   });
 });
 
+test.describe('Etherscan token holders', () => {
+  const site = `https://etherscan.io/token/generic-tokenholders2?m=dark&a=${other}&p=1`;
+  const row = ({ id = 'holder', href = `/token/${other}?a=${address}`, copied = address,
+    name = 'Curve: Fee Receiver' } = {}) => `<tr><td>13</td><td><div class="d-flex align-items-center gap-1">
+      <span data-bs-toggle="tooltip" title="Proxy: ${name} (${address}); implementation: ${other}">
+        <i class="far fa-memo"></i> <a id="${id}" href="${href}" target="_parent">${name}</a>
+      </span><a id="copy-${id}" class="js-clipboard" href="javascript:;" data-clipboard-text="${copied}"
+        onclick="window.nativeCopied=this.dataset.clipboardText">Copy</a>
+    </div></td><td></td><td></td><td></td><td><a id="analytics-${id}" href="/token/${other}?a=${address}#analytics">Analytics</a></td></tr>`;
+  const table = body => `<div class="table-responsive"><table><thead id="theadHolderTable"><tr><th>Rank</th><th>Address</th></tr></thead><tbody>${body}</tbody></table></div>`;
+
+  test('tags a named holder from matching link and copy addresses while keeping native controls', async ({ page }) => {
+    await start(page, { site, html: table(row()), framed: true });
+    expect(await reported(page)).toMatchObject({ adapter: 'Etherscan', status: 'ready', network: 'eip155:1' });
+    await expect(page.locator('#holder')).toHaveAttribute('data-0xtagger-address', address);
+    await expect(page.locator('#holder')).toHaveAttribute('data-0xtagger-tag', 'Treasury');
+    await expect(page.locator('#holder')).toHaveText('Curve: Fee Receiver');
+    await expect(page.locator('#holder')).toHaveAttribute('href', `/token/${other}?a=${address}`);
+    await expect(page.locator('#holder')).toHaveAttribute('target', '_parent');
+    await expect(page.locator('#analytics-holder')).not.toHaveAttribute('data-0xtagger-address');
+    await page.locator('#copy-holder').click();
+    expect(await page.evaluate(() => window.nativeCopied)).toBe(address);
+  });
+
+  test('offers the holder name only for the matching wallet and chain', async ({ page }) => {
+    await start(page, { site, html: table(row()), framed: true, records: [] });
+    await page.getByRole('button', { name: 'Edit wallet tags' }).click();
+    await expect(page.getByRole('textbox', { name: 'Tag 1', exact: true })).toHaveValue('Curve: Fee Receiver');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect.poll(() => page.evaluate(() => window.saves.at(-1)))
+      .toMatchObject({ address, scope: 'eip155:1', tags: ['Curve: Fee Receiver'], source: 'etherscan:page' });
+  });
+
+  test('rejects a holder whose link and copy disagree or whose token page differs', async ({ page }) => {
+    const wrongCopy = row({ id: 'wrong-copy', copied: other });
+    const wrongToken = row({ id: 'wrong-token', href: `/token/${address}?a=${address}` });
+    await start(page, { site, html: table(wrongCopy + wrongToken), framed: true });
+    await expect(page.locator('#wrong-copy')).not.toHaveAttribute('data-0xtagger-address');
+    await expect(page.locator('#wrong-token')).not.toHaveAttribute('data-0xtagger-address');
+    await expect(page.locator('[data-0xtagger-tag]')).toHaveCount(0);
+  });
+});
+
 // The contract reader is a frame of its own as well. A view function that
 // answers with an address renders it as the link the tables use, filled in by
 // the explorer's own script once the function has been queried.
