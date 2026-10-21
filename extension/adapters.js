@@ -8,6 +8,7 @@ import { addressLink, addressText, collect } from './detect.js';
 //   matches  claims a URL; the first match in `adapters` wins
 //   probe    whether the page is ready, still loading, or no longer recognized
 //   rules    where this site keeps address evidence (see detect.js)
+//   nameBefore  optional native address line before which a name can be shown
 //   styles   CSS the site's own elements need while this adapter is active
 //   watch    extra attributes whose changes should trigger a rescan
 //
@@ -188,10 +189,22 @@ const SAFE_COPIES = '[role="button"][aria-label*="0x"]';
 const WHOLE_ADDRESS = /0x[0-9a-fA-F]{40}(?![0-9a-fA-F])/;
 const safePair = element => element.closest(`${SAFE_NAME},[class*="addressContainer"]`)?.parentElement || null;
 
+// Safe puts a named wallet above its address, but an unnamed wallet has only
+// the address line. Give the latter a place for our name without replacing the
+// address or the controls Safe keeps beside it.
+// seen: app.safe.global/settings/setup?safe=eth:0xFE11a5009f2121622271e7dd0FD470264e076af6
+//       — Members > Signers, compare a named signer with an unnamed one — 2026-10-18.
+const safeNameBefore = element => {
+  const addressLine = element.closest('[class*="addressContainer"]');
+  const pair = addressLine && safePair(element);
+  return pair && !pair.querySelector(SAFE_NAME) && pair.contains(addressLine) ? addressLine : null;
+};
+
 const safeAdapter = site({
   id: 'Safe',
   matches: url => url.hostname === 'app.safe.global',
   source: 'safe:page',
+  nameBefore: safeNameBefore,
   // What Safe calls this address, read from the box it sets names in — never
   // from our own replacement, which lives in a stylesheet and leaves the title
   // alone. Safe's two placeholders name no wallet: one is the page talking
@@ -235,6 +248,17 @@ const safeAdapter = site({
   // nobody could edit.
   styles: `${SAFE_NAME} > [data-0xtagger-tag] ~ :has(> svg):not(${UI}):not(:has(:is(p, div, b, strong, label))) {
       display: none !important;
+    }
+    [data-0xtagger-safe-name] {
+      display: flex;
+      align-items: center;
+      min-width: 0;
+      max-width: 100%;
+    }
+    [data-0xtagger-safe-name]::before {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }`,
   rules: {
     targets: `a[href*="/address/"],[data-address],[title],[class*="addressContainer"] span,main span,${SAFE_NAME_BOX},${SAFE_SELECTOR},${SAFE_COPIES} [class*="actorText"]`,
@@ -246,18 +270,31 @@ const safeAdapter = site({
     allowed: SAFE_COPIES,
     skip: element => {
       if (element.matches(SAFE_NAME_BOX)) return false;
-      if (element.children.length && !element.matches(`${SAFE_ADDRESS_LINK},${SAFE_SELECTOR}`)) return true;
+      // Safe bolds the first and last four digits of a scalar address. The
+      // inner span still says one whole wallet; its outer copy span does not.
+      // seen: app.safe.global/transactions/tx?safe=hyper-evm:0x518C21DC88D9780c0A1Be566433c571461A70149
+      //       &id=multisig_0x518C21DC88D9780c0A1Be566433c571461A70149_0xb9b970ebc8b90fe4ae8e4f6002fa29955200f337cfa70b7cefe94c08a057cccf
+      //       — expand the first swapOwner action — 2026-10-21.
+      const highlightedAddress = element.matches('span') && element.closest('[class*="addressContainer"]') &&
+        element.children.length && [...element.children].every(child => child.localName === 'b') &&
+        parseAddress(element.textContent.trim());
+      if (element.children.length && !element.matches(`${SAFE_ADDRESS_LINK},${SAFE_SELECTOR}`) && !highlightedAddress) return true;
       // One name to a widget. Where Safe shows a name above the address and the
       // widget proves which wallet it is, the name is the display a tag
       // replaces, and the address below is left to go on being an address.
       const pair = element.closest('[class*="addressContainer"]') && safePair(element);
-      return Boolean(pair?.querySelector(SAFE_NAME) && pair.querySelector(SAFE_ADDRESS_LINK));
+      const fullAddress = pair && query(pair, '[class*="addressContainer"] span')
+        .some(node => parseAddress(node.textContent.trim()));
+      return Boolean(pair?.querySelector(SAFE_NAME) && (pair.querySelector(SAFE_ADDRESS_LINK) || fullAddress));
     },
     // Explorer links in a compact EthHashInfo widget can identify its display,
     // and the selected Safe is named by the URL and the header's explorer link.
     sources: (element, url) => {
       const widget = element.matches(SAFE_NAME_BOX) ? safePair(element) : element.closest(SAFE_WIDGET);
       const found = widget ? query(widget, SAFE_ADDRESS_LINK).map(link => addressLink(link, url)?.address) : [];
+      if (element.matches(SAFE_NAME_BOX) && widget) {
+        found.push(...query(widget, '[class*="addressContainer"] span').map(node => parseAddress(node.textContent.trim())));
+      }
       // A control that names itself by the address it copies says it whole.
       const copies = element.closest(SAFE_COPIES)?.getAttribute('aria-label')?.match(WHOLE_ADDRESS);
       if (copies) found.push(parseAddress(copies[0]));

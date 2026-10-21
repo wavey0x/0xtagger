@@ -111,6 +111,11 @@ export async function createPageController({
     button.onpointerdown = event => { event.preventDefault(); event.stopPropagation(); };
     button.onclick = event => { event.preventDefault(); event.stopPropagation(); open(targets.get(target.element)); };
     root.append(button);
+    if (target.nameLine) {
+      target.nameLine.append(slot);
+      target.editButton = slot;
+      return;
+    }
     // The glyph may follow the display wherever it stays on the same line: in
     // inline flow, or as the next item on a flex row. Anything else — a block,
     // a cell, a column or a grid — would give it a line of its own, so there it
@@ -156,6 +161,7 @@ export async function createPageController({
       box?.removeAttribute(TAG);
       box?.removeAttribute(SHORT);
     }
+    target.nameLine?.remove();
     element.removeAttribute(ADDRESS);
     if (target.description && element.getAttribute('aria-description') === target.description) element.removeAttribute('aria-description');
     targets.delete(element);
@@ -163,6 +169,7 @@ export async function createPageController({
   }
   function clear() {
     for (const element of targets.keys()) remove(element);
+    for (const line of doc.querySelectorAll('[data-0xtagger-safe-name]')) line.remove();
     editor?.updateVisibility();
   }
   function recordFor(target) {
@@ -170,9 +177,30 @@ export async function createPageController({
   }
   function paint(target) {
     if (target.element.getAttribute(ADDRESS) !== target.address) target.element.setAttribute(ADDRESS, target.address);
-    if (!target.editButton?.isConnected) addEditButton(target);
     const tag = target.naming !== false && !hiddenTags.has(recordKey(target.address, target.network)) &&
       recordFor(target)?.tags[0];
+    if (tag && target.nameBefore?.isConnected) {
+      if (!target.nameLine?.isConnected) {
+        // A site may copy its row's HTML while rebuilding it. That copies our
+        // visible line but not the edit button's shadow root, so replace any
+        // such orphan before putting a working line back in the same slot.
+        for (const orphan of target.nameBefore.parentElement.querySelectorAll(':scope > [data-0xtagger-safe-name]')) orphan.remove();
+        const line = doc.createElement('div');
+        line.setAttribute(UI_ATTRIBUTE, '');
+        line.setAttribute('data-0xtagger-safe-name', '');
+        target.nameBefore.before(line);
+        target.nameLine = line;
+      }
+      target.display = target.nameLine;
+      if (target.editButton?.isConnected && target.editButton.parentElement !== target.nameLine) {
+        target.nameLine.append(target.editButton);
+      }
+    } else if (target.nameLine) {
+      target.nameLine.remove();
+      target.nameLine = null;
+      target.display = displayBox(target.element, target.address);
+    }
+    if (!target.editButton?.isConnected) addEditButton(target);
     const shown = shownOn(target);
     if (shown !== target.element) { target.element.removeAttribute(TAG); target.element.removeAttribute(SHORT); }
     if (tag) {
@@ -215,7 +243,8 @@ export async function createPageController({
     if (!element.hasAttribute(TAG) && nativePrefix && !['none', 'normal', '""'].includes(nativePrefix)) return null;
     const network = item.network || health.network;
     if (network) { normalizeScope(network); if (network === 'global') throw new Error('adapter-network-invalid'); }
-    return { element, address, network, naming: item.naming !== false, display: displayBox(element, address) };
+    return { element, address, network, naming: item.naming !== false,
+      display: displayBox(element, address), nameBefore: adapter.nameBefore?.(element) };
   }
   function scan(root) {
     const claims = new Map();
@@ -239,6 +268,7 @@ export async function createPageController({
       const previous = targets.get(element);
       if (previous && previous.address === target.address && previous.network === target.network) {
         target.description = previous.description; target.editButton = previous.editButton;
+        target.nameLine = previous.nameLine;
       }
       else if (previous) remove(element);
       // What the display said when the adapter last vouched for it, so a repaint
@@ -352,7 +382,12 @@ export async function createPageController({
       if (!element || element.closest(UI)) continue;
       if (change.type === 'childList') {
         const nodes = [...change.addedNodes, ...change.removedNodes];
-        if (nodes.length && nodes.every(node => node.nodeType === 1 && node.matches(UI))) continue;
+        if (nodes.length && nodes.every(node => node.nodeType === 1 && node.matches(UI))) {
+          // A framework may discard just the line we inserted while keeping
+          // its address node. Put that line back on the next scan.
+          if ([...change.removedNodes].some(node => node.matches('[data-0xtagger-safe-name]'))) schedule(element);
+          continue;
+        }
       }
       if (change.type === 'attributes' && (change.attributeName.startsWith('data-0xtagger') || change.attributeName === 'aria-description')) continue;
       if (change.type === 'attributes' && change.oldValue === element.getAttribute(change.attributeName)) continue;

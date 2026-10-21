@@ -337,17 +337,20 @@ test.describe('Generic address text', () => {
 // badge there would have the page vouching for our wording.
 test.describe('Safe address widget', () => {
   const site = `https://app.safe.global/settings/setup?safe=eth:${other}`;
-  const widget = ({ name = 'dudesahn', link = true, shown = `0xabab…abab`, href = '/home?safe=eth:' + other } = {}) =>
+  const splitAddress = `0x<b>${address.slice(2, 6)}</b>${address.slice(6, -4)}<b>${address.slice(-4)}</b>`;
+  const widget = ({ name = 'dudesahn', link = true, shown = `0xabab…abab`, href = '/home?safe=eth:' + other,
+    explorer = 'etherscan.io', key = '' } = {}) =>
     `<div class="SrcEthHashInfo_container__h">
       <div class="SrcEthHashInfo_avatarContainer__h"></div>
       <div>
         ${name ? `<div title="${name}" class="ethHashInfo-name flex items-center">
-          ${href ? `<a id="name" href="${href}">${name}</a>` : `<div id="name">${name}</div>`}
-          <span id="badge"><svg aria-hidden="true" width="20" height="20"></svg></span>
+          ${href ? `<a id="name${key}" href="${href}">${name}</a>` : `<div id="name${key}">${name}</div>`}
+          <span id="badge${key}"><svg aria-hidden="true" width="20" height="20"></svg></span>
         </div>` : ''}
         <div class="SrcEthHashInfo_addressContainer__h">
-          <b>eth:</b><span id="addr">${shown}</span>
-          ${link ? `<a id="explorer" href="https://etherscan.io/address/${address}">open</a>` : ''}
+          <b>eth:</b><span id="native-copy${key}" class="inline-flex cursor-pointer" aria-label="Copy to clipboard"
+            onclick="window.nativeCopied='${address}';window.nativeCopyCount=(window.nativeCopyCount||0)+1"><span id="addr${key}">${shown}</span></span>
+          ${link ? `<a id="explorer${key}" data-testid="explorer-btn" href="https://${explorer}/address/${address}">open</a>` : ''}
         </div>
       </div>
     </div>`;
@@ -374,7 +377,72 @@ test.describe('Safe address widget', () => {
     await open(page, widget());
     await expect(page.locator('#addr')).not.toHaveAttribute('data-0xtagger-tag', /./);
     await expect(page.locator('#addr')).toHaveText('0xabab…abab');
+    await expect(page.locator('[data-0xtagger-safe-name]')).toHaveCount(0);
     await expect(page.locator('[data-0xtagger-tag]')).toHaveCount(1);
+  });
+
+  test('puts a tag above Safe’s unnamed address and keeps its own controls', async ({ page }) => {
+    await open(page, widget({ name: '' }));
+    const line = page.locator('[data-0xtagger-safe-name]');
+    await expect(line).toHaveAttribute('data-0xtagger-tag', 'Treasury');
+    await expect(line).toBeVisible();
+    await expect(line.locator('[data-0xtagger-edit]')).toHaveCount(1);
+    await expect(page.locator('#addr')).toHaveAttribute('data-0xtagger-address', address);
+    await expect(page.locator('#addr')).not.toHaveAttribute('data-0xtagger-tag', /./);
+    await expect(page.locator('#addr')).toHaveText('0xabab…abab');
+    await expect(page.locator('#addr')).toBeVisible();
+    await expect(page.locator('#explorer')).toHaveAttribute('href', `https://etherscan.io/address/${address}`);
+    await page.locator('#addr').click();
+    expect(await page.evaluate(() => window.nativeCopied)).toBe(address);
+    expect(await page.evaluate(() => window.nativeCopyCount)).toBe(1);
+    await line.getByRole('button', { name: 'Edit wallet tags' }).click();
+    expect(await page.evaluate(() => window.nativeCopyCount)).toBe(1);
+    await expect(page.getByRole('textbox', { name: 'Tag 1', exact: true })).toHaveValue('Treasury');
+    await page.keyboard.press('Escape');
+  });
+
+  test('tags bold-split address parameters in two expanded batch actions and after a rerender', async ({ page }) => {
+    const transaction = `https://app.safe.global/transactions/tx?safe=hyper-evm:${other}`;
+    await start(page, { site: transaction, html: `<header>Safe</header><main>
+      <section data-testid="batch-action">${widget({ shown: splitAddress, explorer: 'hyperevmscan.io', key: '-named' })}</section>
+      <section data-testid="batch-action">${widget({ name: '', shown: splitAddress, explorer: 'hyperevmscan.io', key: '-unnamed' })}</section>
+      </main>` });
+    await expect(page.locator('#name-named')).toHaveAttribute('data-0xtagger-tag', 'Treasury');
+    await expect(page.locator('#addr-named')).not.toHaveAttribute('data-0xtagger-tag', /./);
+    await expect(page.locator('#addr-unnamed')).toHaveAttribute('data-0xtagger-address', address);
+    await expect(page.locator('[data-testid="batch-action"]').nth(1).locator('[data-0xtagger-safe-name]'))
+      .toHaveAttribute('data-0xtagger-tag', 'Treasury');
+    await expect(page.locator('[data-0xtagger-tag]')).toHaveCount(2);
+
+    await page.locator('[data-testid="batch-action"]').nth(1).evaluate(node => { node.innerHTML = node.innerHTML; });
+    await expect(page.locator('#addr-unnamed')).toHaveAttribute('data-0xtagger-address', address);
+    await expect(page.locator('[data-0xtagger-tag]')).toHaveCount(2);
+    await expect(page.locator('[data-testid="batch-action"]').nth(1).locator('[data-0xtagger-safe-name] [data-0xtagger-edit]'))
+      .toHaveCount(1);
+  });
+
+  test('keeps nested address arrays and abbreviated signer values taggable', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 800 });
+    await open(page, `<div data-testid="tx-data-row"><div data-testid="address-array">
+      ${widget({ name: '', key: '-array' })}
+      <div data-testid="nested-array">${widget({ name: '', key: '-nested' })}</div>
+      </div></div><div data-testid="signer-summary">${widget({ name: '', key: '-signer' })}</div>`);
+    for (const key of ['-array', '-nested', '-signer']) {
+      await expect(page.locator(`#addr${key}`)).toHaveAttribute('data-0xtagger-address', address);
+      await expect(page.locator(`#explorer${key}`)).toHaveAttribute('href', `https://etherscan.io/address/${address}`);
+    }
+    await expect(page.locator('[data-0xtagger-safe-name]')).toHaveCount(3);
+  });
+
+  test('leaves batch calldata and transaction hashes alone', async ({ page }) => {
+    const calldata = '0x00518c21' + 'ab'.repeat(50);
+    const hash = '0x' + 'cd'.repeat(32);
+    await open(page, `<div data-testid="tx-hexData"><span id="collapsed">${calldata}</span>
+      <span id="expanded">${calldata}</span></div><span id="hash">${hash}</span>${widget({ name: '' })}`);
+    for (const id of ['collapsed', 'expanded', 'hash']) {
+      await expect(page.locator(`#${id}`)).not.toHaveAttribute('data-0xtagger-address');
+    }
+    await expect(page.locator('[data-0xtagger-safe-name]')).toHaveCount(1);
   });
 
   // The badge claims the name came from one of Safe's own books. While a tag
@@ -404,11 +472,47 @@ test.describe('Safe address widget', () => {
 
   // Nothing proves which wallet an abbreviation belongs to, so a widget with no
   // explorer link names nobody — and must not take the address down with it.
-  test('an unprovable widget tags nothing, and a full address still tags', async ({ page }) => {
+  test('an unprovable widget tags nothing, and a full address can prove its name', async ({ page }) => {
     await open(page, widget({ link: false }));
     await expect(page.locator('[data-0xtagger-address]')).toHaveCount(0);
+    await page.evaluate(() => window.controller.stop());
     await open(page, widget({ link: false, shown: address }));
-    await expect(page.locator('#addr')).toHaveAttribute('data-0xtagger-tag', 'Treasury');
+    await expect(page.locator('#name')).toHaveAttribute('data-0xtagger-address', address);
+    await expect(page.locator('#addr')).not.toHaveAttribute('data-0xtagger-tag', /./);
+    await expect(page.locator('#name')).toHaveAttribute('data-0xtagger-tag', 'Treasury');
+    await expect(page.locator('[data-0xtagger-safe-name]')).toHaveCount(0);
+  });
+
+  test('does not name a widget whose full address disagrees with its explorer link', async ({ page }) => {
+    const disputed = widget({ shown: address }).replace(
+      `https://etherscan.io/address/${address}`, `https://etherscan.io/address/${other}`);
+    await open(page, disputed);
+    await expect(page.locator('[data-0xtagger-address],[data-0xtagger-safe-name]')).toHaveCount(0);
+    await expect(page.locator('#addr')).toHaveText(address);
+  });
+
+  test('returns an unnamed address to Safe when its tag is hidden or the row changes', async ({ page }) => {
+    await open(page, widget({ name: '' }));
+    const line = page.locator('[data-0xtagger-safe-name]');
+    await expect(line).toHaveCount(1);
+    await line.getByRole('button', { name: 'Edit wallet tags' }).click();
+    await page.getByRole('switch', { name: 'Show my tags for this address', exact: true }).click();
+    await expect(line).toHaveCount(0);
+    await expect(page.locator('#addr')).toHaveText('0xabab…abab');
+    await page.getByRole('switch', { name: 'Show my tags for this address', exact: true }).click();
+    await expect(line).toHaveCount(1);
+    await page.keyboard.press('Escape');
+    const oldAddress = await page.locator('#addr').elementHandle();
+    await page.locator('.SrcEthHashInfo_container__h').evaluate(node => { node.innerHTML = node.innerHTML; });
+    await expect.poll(() => page.locator('#addr').evaluate((node, old) => node !== old, oldAddress)).toBe(true);
+    await expect(line).toHaveCount(1);
+    await expect(line.locator('[data-0xtagger-edit]').getByRole('button')).toBeVisible();
+    await expect(page.locator('#addr')).toHaveText('0xabab…abab');
+    await line.evaluate(node => node.remove());
+    await expect(line.locator('[data-0xtagger-edit]').getByRole('button')).toBeVisible();
+    await page.evaluate(() => window.controller.stop());
+    await expect(line).toHaveCount(0);
+    await expect(page.locator('#addr')).toHaveText('0xabab…abab');
   });
 
   // Safe's own placeholders name no wallet: one is the page talking about
@@ -494,12 +598,6 @@ test.describe('Safe address widget', () => {
     expect(await page.evaluate(() => window.controller.health.status)).toBe('ready');
   });
 
-  // A widget Safe renders without a name is still an address to tag.
-  test('a widget with no name tags its address', async ({ page }) => {
-    await open(page, widget({ name: '' }));
-    await expect(page.locator('#addr')).toHaveAttribute('data-0xtagger-address', address);
-    await expect(page.locator('#addr')).toHaveAttribute('data-0xtagger-tag', 'Treasury');
-  });
 });
 
 // Safe keeps its own address book in site storage. It is read when someone
