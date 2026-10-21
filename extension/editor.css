@@ -63,19 +63,40 @@ dialog.editor::backdrop { background: var(--0xtagger-backdrop); backdrop-filter:
 .conflict button + button { margin-left: 14px; }
 footer { margin-top: 8px; }
 .save-scope { max-width: 50%; color: var(--0xtagger-muted); font-size: 10px; line-height: 1.2; text-align: right; overflow-wrap: anywhere; }
-/* Inline with the address, like the site's native copy control. */
-.inline-tag { position: relative; display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 3px; border-radius: 4px; color: var(--0xtagger-accent); background: transparent; transition: transform 180ms cubic-bezier(.2,.9,.25,1.4), background-color 120ms ease; }
-/* The one piece of motion in 0xtagger: a press that gives, then springs back
-   past where it started, and a ring that leaves the button as it is let go.
-   The ring is held against the button while pressed and only travels on the
-   release, so the payoff belongs to the click and not to the holding down. */
-.inline-tag:active { transform: scale(.82); transition-duration: 70ms; }
-.inline-tag::after { content: ''; position: absolute; inset: 0; border: 1px solid var(--0xtagger-accent); border-radius: inherit; opacity: 0; transform: scale(1.7); transition: transform 420ms ease-out, opacity 420ms ease-out; pointer-events: none; }
-.inline-tag:active::after { opacity: .5; transform: scale(.9); transition-duration: 0s; }
-@media (prefers-reduced-motion: reduce) { .inline-tag,.inline-tag::after { transition: none; } .inline-tag:active { transform: none; } .inline-tag:active::after { opacity: 0; } }
-.inline-tag:hover,.inline-tag:focus-visible { background: var(--0xtagger-accent-hover); }
-.inline-tag svg { width: 14px; height: 14px; pointer-events: none; }
-.inline-tag:hover svg,.inline-tag:focus-visible svg { filter: drop-shadow(0 0 3px var(--0xtagger-accent-glow)); }
+/* The tag itself catches the light; the button adds no plate or border. */
+.inline-tag { display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 3px; color: var(--0xtagger-accent); background: transparent; transition: color 150ms ease; }
+.inline-tag svg { width: 14px; height: 14px; pointer-events: none; transform-origin: center; transition: transform 100ms ease-out, filter 150ms ease; }
+.inline-tag .tag-body { fill: transparent; transition: fill 150ms ease; }
+.inline-tag .tag-gloss { stroke: white; stroke-width: .9; opacity: 0; transition: opacity 150ms ease; }
+.inline-tag:is(:focus-visible,.is-popping) { color: var(--0xtagger-accent-hover-ink); }
+.inline-tag:is(:focus-visible,.is-popping) .tag-body { fill: color-mix(in srgb, var(--0xtagger-accent-hover-ink) 24%, transparent); }
+.inline-tag:is(:focus-visible,.is-popping) .tag-gloss { opacity: .65; }
+.inline-tag:is(:focus-visible,.is-popping) svg { filter: drop-shadow(0 0 2px var(--0xtagger-accent-glow)); }
+@media (hover: hover) {
+  .inline-tag:hover { color: var(--0xtagger-accent-hover-ink); }
+  .inline-tag:hover .tag-body { fill: color-mix(in srgb, var(--0xtagger-accent-hover-ink) 24%, transparent); }
+  .inline-tag:hover .tag-gloss { opacity: .65; }
+  .inline-tag:hover svg { filter: drop-shadow(0 0 2px var(--0xtagger-accent-glow)); }
+}
+/* The shape gives under a press, pops once, then eases straight back to rest.
+   Its own gloss flashes at the peak. */
+.inline-tag:active svg { transform: scale(.82); transition-duration: 70ms; }
+@keyframes tagger-pop {
+  0% { transform: scale(.82); filter: drop-shadow(0 0 0 transparent); }
+  35% { transform: scale(1.38); filter: drop-shadow(0 0 6px var(--0xtagger-accent-glow)); }
+  100% { transform: scale(1); filter: drop-shadow(0 0 2px var(--0xtagger-accent-glow)); }
+}
+@keyframes tagger-glimmer { 0% { opacity: .2; } 35% { opacity: 1; } 100% { opacity: .65; } }
+.inline-tag.is-popping svg { animation: tagger-pop 320ms cubic-bezier(.2,.85,.3,1) both; }
+.inline-tag.is-popping .tag-gloss { animation: tagger-glimmer 320ms ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  .inline-tag,.inline-tag svg,.inline-tag .tag-body,.inline-tag .tag-gloss { transition: none; }
+  .inline-tag:active { color: var(--0xtagger-accent-hover-ink); }
+  .inline-tag:active svg { transform: none; }
+  .inline-tag:active .tag-body { fill: color-mix(in srgb, var(--0xtagger-accent-hover-ink) 24%, transparent); }
+  .inline-tag:active .tag-gloss { opacity: .65; }
+  .inline-tag.is-popping svg,.inline-tag.is-popping .tag-gloss { animation: none; }
+}
 
 /* The tick draws on rather than appearing: the whole of the confirmation is
    over in a quarter of a second, and it is the part worth watching. */

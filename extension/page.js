@@ -109,7 +109,20 @@ export async function createPageController({
     // Keep a suggestion's search field focused until activation. Otherwise its
     // blur handler can hide this button before the browser delivers the click.
     button.onpointerdown = event => { event.preventDefault(); event.stopPropagation(); };
-    button.onclick = event => { event.preventDefault(); event.stopPropagation(); open(targets.get(target.element)); };
+    button.onanimationend = event => {
+      if (event.animationName === 'tagger-pop') button.classList.remove('is-popping');
+    };
+    button.onclick = event => {
+      event.preventDefault(); event.stopPropagation();
+      // Restart the small payoff on every activation, including keyboard clicks.
+      // The effect is visual only; opening the editor never waits for it.
+      button.classList.remove('is-popping');
+      if (!win.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        void button.offsetWidth;
+        button.classList.add('is-popping');
+      }
+      open(targets.get(target.element));
+    };
     root.append(button);
     if (target.nameLine) {
       target.nameLine.append(slot);

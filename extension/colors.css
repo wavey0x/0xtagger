@@ -20,6 +20,7 @@
   --0xtagger-sheen: color-mix(in srgb, #ffffff 6%, transparent);
   --0xtagger-inset: color-mix(in srgb, #ffffff 12.5%, transparent);
   --0xtagger-backdrop: color-mix(in srgb, #000000 19%, transparent);
+  --0xtagger-accent-hover-ink: #7846c5;
   --0xtagger-canvas: #f6f7fa;
   --0xtagger-panel: #ffffff;
   --0xtagger-ink: #111111;
@@ -32,6 +33,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-0xtagger-surface="light"]) {
   --0xtagger-accent: #a78bfa;
+  --0xtagger-accent-hover-ink: #c4b5fd;
   --0xtagger-accent-fill: #6d28d9;
   --0xtagger-on-accent: #ffffff;
   --0xtagger-error: #f87171;
@@ -47,6 +49,7 @@
 }
 :root[data-0xtagger-surface="dark"] {
   --0xtagger-accent: #a78bfa;
+  --0xtagger-accent-hover-ink: #c4b5fd;
   --0xtagger-accent-fill: #6d28d9;
   --0xtagger-on-accent: #ffffff;
   --0xtagger-error: #f87171;
@@ -61,6 +64,7 @@
 }
 :host([data-dark]) {
   --0xtagger-accent: #a78bfa;
+  --0xtagger-accent-hover-ink: #c4b5fd;
   --0xtagger-accent-fill: #6d28d9;
   --0xtagger-on-accent: #ffffff;
   --0xtagger-error: #f87171;

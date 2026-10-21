@@ -45,7 +45,7 @@ export const THEMED_MARK_PLAIN = themed(SLAB + GLYPHS_PLAIN);
 export const EDITOR_MARK = brandMarkPlain('var(--0xtagger-accent)');
 
 // Small outline glyphs shared by 0xtagger's UI.
-export const TAG_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 2h5l7 7-5 5-7-7Z"/><circle cx="5" cy="5" r=".8"/></svg>';
+export const TAG_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="tag-body" d="M2 2h5l7 7-5 5-7-7Z"/><circle cx="5" cy="5" r=".8"/><path class="tag-gloss" d="M3.3 3.2h3.2l3.2 3.2"/></svg>';
 export const COPY_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="8" height="10" rx="1.5"/><path d="M10 12v1a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h3"/></svg>';
 // Where a book is kept, at a glance: a screen for this device, stacked platters
 // for a server.

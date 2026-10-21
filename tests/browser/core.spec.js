@@ -459,26 +459,38 @@ test("an address page keeps its own address beside the name it is given", async 
 test('a menu of owners is content: rows keep the explorer\'s own name and still take a glyph', async ({ page }) => {
   await start(page, { site: 'https://etherscan.io/', records: [record,
     { address: other, scope: 'global', tags: ['Second owner'], version: 'two' }],
-    html: `<style>.dropdown-menu{display:flex;flex-direction:column}.dropdown-item{display:block;width:100%}</style>
-    <header>Explorer</header><main><div class="dropdown-menu">
-      <a id="named-owner" class="dropdown-item" href="/address/${address}"><span class="hash-tag">Explorer name tag</span></a>
-      <a id="plain-owner" class="dropdown-item" href="/address/${other}">0xcdcd…cdcd</a>
-    </div><nav><a id="nav-card" class="hash-tag" href="/address/${address}">View address</a></nav></main>` });
+    html: `<style>.dropdown-item{display:inline-flex;align-items:center;width:100%}</style>
+    <header>Explorer</header><main><ul id="owner_container" class="dropdown-menu"></ul>
+    <nav><a id="nav-card" class="hash-tag" href="/address/${address}">View address</a></nav></main>` });
+  // Etherscan fetches the list only when Owners opens. Its links are inline
+  // flex inside plain list items, with the address widget inside each link.
+  await page.locator('#owner_container').evaluate((menu, html) => { menu.innerHTML = html; }, `
+    <li><a id="named-owner" class="dropdown-item group text-truncate" href="/address/${address}" target="_blank">
+      <span class="hash-tag">Explorer name tag</span><i class="far fa-arrow-up-right-from-square"></i></a></li>
+    <li><a id="plain-owner" class="dropdown-item group text-truncate" href="/address/${other}" target="_blank">
+      <span data-highlight-target="${other}">0xcdcd…cdcd</span><i class="far fa-arrow-up-right-from-square"></i></a></li>`);
   // The explorer's own name stands; knowing whose wallet it is adds the glyph.
   await expect(page.locator('#named-owner .hash-tag')).toHaveText('Explorer name tag');
   await expect(page.locator('#named-owner .hash-tag')).toHaveAttribute('data-0xtagger-address', address);
   await expect(page.locator('#named-owner [data-0xtagger-tag]')).toHaveCount(0);
   // A row showing the address itself is named like anywhere else on the site.
-  await expect(page.locator('#plain-owner')).toHaveAttribute('data-0xtagger-tag', 'Second owner');
-  // Neither glyph is pushed onto a line of its own: a row that would do that
-  // carries it inside the display instead of after it.
-  await expect(page.locator('#named-owner > [data-0xtagger-edit]')).toHaveCount(1);
-  await expect(page.locator('#plain-owner > [data-0xtagger-edit]')).toHaveCount(1);
+  await expect(page.locator('#plain-owner [data-highlight-target]')).toHaveAttribute('data-0xtagger-tag', 'Second owner');
+  // The edit controls belong to their list items, outside the native links.
+  await expect(page.locator('#named-owner + [data-0xtagger-edit]')).toHaveCount(1);
+  await expect(page.locator('#plain-owner + [data-0xtagger-edit]')).toHaveCount(1);
+  await expect(page.locator('#named-owner [data-0xtagger-edit],#plain-owner [data-0xtagger-edit]')).toHaveCount(0);
   await expect(page.locator('.dropdown-menu > [data-0xtagger-edit]')).toHaveCount(0);
   // Site navigation is left alone entirely, name and glyph both.
   await expect(page.locator('#nav-card')).not.toHaveAttribute('data-0xtagger-address', /./);
   await expect(page.locator('#nav-card [data-0xtagger-edit]')).toHaveCount(0);
+  await page.locator('#named-owner').evaluate(link => {
+    link.addEventListener('click', event => { event.preventDefault(); window.nativeOpened = true; });
+  });
+  await page.locator('#named-owner').click();
+  expect(await page.evaluate(() => window.nativeOpened)).toBe(true);
+  await page.evaluate(() => { window.nativeOpened = false; });
   await tagFor(page, 'named-owner').click();
+  expect(await page.evaluate(() => window.nativeOpened)).toBe(false);
   await expect(shownAddress(page)).toHaveText(checksumAddress(address));
 });
 

@@ -54,6 +54,7 @@ export const COLORS = Object.freeze({
 export const THEMES = Object.freeze({
   light: {
     accent,
+    accentHoverInk: '#7846c5',
     accentFill: accent,
     onAccent: white,
     canvas: '#f6f7fa', panel: white, ink: '#111111', muted: '#666666',
@@ -62,6 +63,7 @@ export const THEMES = Object.freeze({
   },
   dark: {
     accent: accentOnDark,
+    accentHoverInk: '#c4b5fd',
     accentFill: accentFillDark,
     onAccent: white,
     error: '#f87171',

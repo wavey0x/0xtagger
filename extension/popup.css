@@ -13,7 +13,8 @@ body { width: 320px; padding: 10px; background: radial-gradient(ellipse at top l
    only repeats the sentence the two already make. */
 #site-name { min-width: 0; font-size: 12px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* A way out of the popup, not a call to action: it sits quiet until pointed at. */
-.open-book { display: flex; align-items: center; gap: 8px; width: calc(100% + 16px); margin: 6px -8px 0; padding: 9px 8px; font-size: 11px; font-weight: 600; color: var(--0xtagger-muted); text-align: left; }
+.open-book { position: relative; display: flex; align-items: center; gap: 8px; width: calc(100% + 16px); margin: 10px -8px 0; padding: 13px 8px 9px; font-size: 11px; font-weight: 600; color: var(--0xtagger-muted); text-align: left; }
+.open-book::before { content: ''; position: absolute; top: 0; left: 8px; right: 8px; border-top: 1px solid var(--0xtagger-line); }
 .open-book svg { flex-shrink: 0; width: 14px; height: 14px; }
 .open-book .go { margin-left: auto; }
 .open-book:hover,.open-book:focus-visible { color: var(--0xtagger-accent); background: var(--0xtagger-accent-hover); }

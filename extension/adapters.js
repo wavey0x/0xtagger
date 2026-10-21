@@ -63,8 +63,8 @@ const holderAddress = (element, url) => {
   const copied = parseAddress(element.closest('td')?.querySelector('.js-clipboard[data-clipboard-text]')?.getAttribute('data-clipboard-text'));
   return link.origin === url.origin && token && token === holdersToken && holder === copied ? holder : null;
 };
-// A name cut short to fit is not a name: whatever stands in the field is what
 
+// A name cut short to fit is not a name: whatever stands in the field is what
 // Save would store. The whole of it is written in a tooltip, and the explorer's
 // own script takes that tooltip over and the title out of the markup before
 // anyone can click a row, so a row showing half a name is offering nothing.
@@ -114,6 +114,10 @@ const etherscanAdapter = site({
   // its From row. Etherscan caps [data-truncate=address] at 21ch; our hidden
   // native text has zero font size, so that cap becomes zero and clips the tag.
   // 171px is that cap at Etherscan's normal 14px link size.
+  // The Owners menu puts each inline-flex address link in a plain list item.
+  // Our edit control follows that link; the item has to carry both on one row.
+  // seen: etherscan.io/address/0xc420C9d507D0E038BD76383AaADCAd576ed0073c
+  //       — open Owners — 2026-10-20.
   styles: `.badge:is([data-0xtagger-tag], :has([data-0xtagger-tag])) {
       background: transparent !important;
       border: 0 !important;
@@ -123,6 +127,15 @@ const etherscanAdapter = site({
     }
     [data-truncate="address"][data-0xtagger-tag] {
       max-width: 171px;
+    }
+    #owner_container > li:has(> [data-0xtagger-edit]) {
+      display: flex;
+      align-items: center;
+    }
+    #owner_container > li:has(> [data-0xtagger-edit]) > .dropdown-item {
+      flex: 1 1 auto;
+      min-width: 0;
+      width: auto;
     }`,
   probe({ document, url, embedded }) {
     if (document.querySelector('#challenge-running,#challenge-stage,[name="cf-turnstile-response"]') || /^(Just a moment|Attention Required)/i.test(document.title)) return { status: 'waiting' };
