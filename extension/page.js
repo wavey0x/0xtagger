@@ -169,7 +169,7 @@ export async function createPageController({
   }
   function clear() {
     for (const element of targets.keys()) remove(element);
-    for (const line of doc.querySelectorAll('[data-0xtagger-safe-name]')) line.remove();
+    for (const line of doc.querySelectorAll('[data-0xtagger-name-line]')) line.remove();
     editor?.updateVisibility();
   }
   function recordFor(target) {
@@ -184,10 +184,10 @@ export async function createPageController({
         // A site may copy its row's HTML while rebuilding it. That copies our
         // visible line but not the edit button's shadow root, so replace any
         // such orphan before putting a working line back in the same slot.
-        for (const orphan of target.nameBefore.parentElement.querySelectorAll(':scope > [data-0xtagger-safe-name]')) orphan.remove();
+        for (const orphan of target.nameBefore.parentElement.querySelectorAll(':scope > [data-0xtagger-name-line]')) orphan.remove();
         const line = doc.createElement('div');
         line.setAttribute(UI_ATTRIBUTE, '');
-        line.setAttribute('data-0xtagger-safe-name', '');
+        line.setAttribute('data-0xtagger-name-line', '');
         target.nameBefore.before(line);
         target.nameLine = line;
       }
@@ -385,7 +385,7 @@ export async function createPageController({
         if (nodes.length && nodes.every(node => node.nodeType === 1 && node.matches(UI))) {
           // A framework may discard just the line we inserted while keeping
           // its address node. Put that line back on the next scan.
-          if ([...change.removedNodes].some(node => node.matches('[data-0xtagger-safe-name]'))) schedule(element);
+          if ([...change.removedNodes].some(node => node.matches('[data-0xtagger-name-line]'))) schedule(element);
           continue;
         }
       }

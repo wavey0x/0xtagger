@@ -47,3 +47,17 @@ a[data-0xtagger-tag], code[data-0xtagger-tag] {
 [data-0xtagger-short]::before {
   font-size: var(--0xtagger-size, 14px);
 }
+
+/* A name line an adapter puts above an address that has no name of its own.
+   It is ours, so its look lives here rather than with any one site. */
+[data-0xtagger-name-line] {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+}
+[data-0xtagger-name-line]::before {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

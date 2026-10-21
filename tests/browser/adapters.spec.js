@@ -377,13 +377,13 @@ test.describe('Safe address widget', () => {
     await open(page, widget());
     await expect(page.locator('#addr')).not.toHaveAttribute('data-0xtagger-tag', /./);
     await expect(page.locator('#addr')).toHaveText('0xabab…abab');
-    await expect(page.locator('[data-0xtagger-safe-name]')).toHaveCount(0);
+    await expect(page.locator('[data-0xtagger-name-line]')).toHaveCount(0);
     await expect(page.locator('[data-0xtagger-tag]')).toHaveCount(1);
   });
 
   test('puts a tag above Safe’s unnamed address and keeps its own controls', async ({ page }) => {
     await open(page, widget({ name: '' }));
-    const line = page.locator('[data-0xtagger-safe-name]');
+    const line = page.locator('[data-0xtagger-name-line]');
     await expect(line).toHaveAttribute('data-0xtagger-tag', 'Treasury');
     await expect(line).toBeVisible();
     await expect(line.locator('[data-0xtagger-edit]')).toHaveCount(1);
@@ -410,14 +410,14 @@ test.describe('Safe address widget', () => {
     await expect(page.locator('#name-named')).toHaveAttribute('data-0xtagger-tag', 'Treasury');
     await expect(page.locator('#addr-named')).not.toHaveAttribute('data-0xtagger-tag', /./);
     await expect(page.locator('#addr-unnamed')).toHaveAttribute('data-0xtagger-address', address);
-    await expect(page.locator('[data-testid="batch-action"]').nth(1).locator('[data-0xtagger-safe-name]'))
+    await expect(page.locator('[data-testid="batch-action"]').nth(1).locator('[data-0xtagger-name-line]'))
       .toHaveAttribute('data-0xtagger-tag', 'Treasury');
     await expect(page.locator('[data-0xtagger-tag]')).toHaveCount(2);
 
     await page.locator('[data-testid="batch-action"]').nth(1).evaluate(node => { node.innerHTML = node.innerHTML; });
     await expect(page.locator('#addr-unnamed')).toHaveAttribute('data-0xtagger-address', address);
     await expect(page.locator('[data-0xtagger-tag]')).toHaveCount(2);
-    await expect(page.locator('[data-testid="batch-action"]').nth(1).locator('[data-0xtagger-safe-name] [data-0xtagger-edit]'))
+    await expect(page.locator('[data-testid="batch-action"]').nth(1).locator('[data-0xtagger-name-line] [data-0xtagger-edit]'))
       .toHaveCount(1);
   });
 
@@ -431,7 +431,7 @@ test.describe('Safe address widget', () => {
       await expect(page.locator(`#addr${key}`)).toHaveAttribute('data-0xtagger-address', address);
       await expect(page.locator(`#explorer${key}`)).toHaveAttribute('href', `https://etherscan.io/address/${address}`);
     }
-    await expect(page.locator('[data-0xtagger-safe-name]')).toHaveCount(3);
+    await expect(page.locator('[data-0xtagger-name-line]')).toHaveCount(3);
   });
 
   test('leaves batch calldata and transaction hashes alone', async ({ page }) => {
@@ -442,7 +442,7 @@ test.describe('Safe address widget', () => {
     for (const id of ['collapsed', 'expanded', 'hash']) {
       await expect(page.locator(`#${id}`)).not.toHaveAttribute('data-0xtagger-address');
     }
-    await expect(page.locator('[data-0xtagger-safe-name]')).toHaveCount(1);
+    await expect(page.locator('[data-0xtagger-name-line]')).toHaveCount(1);
   });
 
   // The badge claims the name came from one of Safe's own books. While a tag
@@ -480,20 +480,20 @@ test.describe('Safe address widget', () => {
     await expect(page.locator('#name')).toHaveAttribute('data-0xtagger-address', address);
     await expect(page.locator('#addr')).not.toHaveAttribute('data-0xtagger-tag', /./);
     await expect(page.locator('#name')).toHaveAttribute('data-0xtagger-tag', 'Treasury');
-    await expect(page.locator('[data-0xtagger-safe-name]')).toHaveCount(0);
+    await expect(page.locator('[data-0xtagger-name-line]')).toHaveCount(0);
   });
 
   test('does not name a widget whose full address disagrees with its explorer link', async ({ page }) => {
     const disputed = widget({ shown: address }).replace(
       `https://etherscan.io/address/${address}`, `https://etherscan.io/address/${other}`);
     await open(page, disputed);
-    await expect(page.locator('[data-0xtagger-address],[data-0xtagger-safe-name]')).toHaveCount(0);
+    await expect(page.locator('[data-0xtagger-address],[data-0xtagger-name-line]')).toHaveCount(0);
     await expect(page.locator('#addr')).toHaveText(address);
   });
 
   test('returns an unnamed address to Safe when its tag is hidden or the row changes', async ({ page }) => {
     await open(page, widget({ name: '' }));
-    const line = page.locator('[data-0xtagger-safe-name]');
+    const line = page.locator('[data-0xtagger-name-line]');
     await expect(line).toHaveCount(1);
     await line.getByRole('button', { name: 'Edit wallet tags' }).click();
     await page.getByRole('switch', { name: 'Show my tags for this address', exact: true }).click();

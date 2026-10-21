@@ -248,17 +248,6 @@ const safeAdapter = site({
   // nobody could edit.
   styles: `${SAFE_NAME} > [data-0xtagger-tag] ~ :has(> svg):not(${UI}):not(:has(:is(p, div, b, strong, label))) {
       display: none !important;
-    }
-    [data-0xtagger-safe-name] {
-      display: flex;
-      align-items: center;
-      min-width: 0;
-      max-width: 100%;
-    }
-    [data-0xtagger-safe-name]::before {
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
     }`,
   rules: {
     targets: `a[href*="/address/"],[data-address],[title],[class*="addressContainer"] span,main span,${SAFE_NAME_BOX},${SAFE_SELECTOR},${SAFE_COPIES} [class*="actorText"]`,
