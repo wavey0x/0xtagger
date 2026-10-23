@@ -81,6 +81,19 @@ test('each tag line has its own network, and moving one saves both lists', async
   ]));
 });
 
+// Order is priority: the first tag for a network is the one a page shows.
+test('dragging a tag by its handle reorders its network, waiting for Save', async ({ page }) => {
+  await start(page);
+  await edit(page).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.locator('.row').nth(1).locator('.grip').dragTo(dialog.locator('.row').nth(0), { targetPosition: { x: 40, y: 4 } });
+  expect(await dialog.locator('.row input').evaluateAll(inputs => inputs.map(input => input.value))).toEqual(['Operations', 'Treasury', '']);
+  await expect(dialog.locator('.row.dirty')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Save all 2' }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(await page.evaluate(() => window.saves)).toEqual([expect.objectContaining({ scope: 'global', tags: ['Operations', 'Treasury'], version: 'one' })]);
+});
+
 test('a pending save sends one write and its late completion cannot close a newer draft', async ({ page }) => {
   await start(page);
   await edit(page).click();

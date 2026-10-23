@@ -2,7 +2,7 @@ import { findRecord, MAX_TAG_LENGTH, normalizeTags, sameTags, sourceName, usable
 import { checksumAddress } from './checksum.js';
 import { chainLogos } from './vendor/chain-logos.js';
 import { quickNetworks, scopeName, scopeSymbol } from './networks.js';
-import { EDITOR_MARK, COPY_ICON, COPIED_ICON, EYE_ICON, EYE_OFF_ICON, GLOBE_ICON, CHEVRON_ICON, CHECK_ICON, CLOSE_ICON, UNDO_ICON, confirmCopied } from './icons.js';
+import { EDITOR_MARK, COPY_ICON, COPIED_ICON, EYE_ICON, EYE_OFF_ICON, GLOBE_ICON, CHEVRON_ICON, CHECK_ICON, CLOSE_ICON, UNDO_ICON, GRIP_ICON, confirmCopied } from './icons.js';
 
 const element = (tag, text, attrs = {}) => {
   const node = document.createElement(tag);
@@ -288,8 +288,19 @@ export function createEditor(container, { address, scope: opened = 'global', sta
     get('.save-all').disabled = locked;
     if (get('.clear')) get('.clear').disabled = busy || !lines.some(item => !item.removed);
   }
+  // A new order for the lines. Tags whose order changed within their network
+  // are waiting to be saved, since that order is what a page reads.
+  function reorder(order, focusAt) {
+    for (const scope of new Set(lines.map(item => item.saved?.scope).filter(Boolean))) {
+      const before = lines.filter(item => item.saved?.scope === scope);
+      order.filter(item => item.saved?.scope === scope).forEach((item, at) => { if (before[at] !== item) item.moved = true; });
+    }
+    lines = order;
+    renderLines(focusAt);
+  }
   function renderLines(focusAt = 0, typing = false) {
     const items = all();
+    get('.lines').classList.toggle('ranked', lines.length > 1);
     get('.lines').replaceChildren(...items.map((item, index) => {
       const row = element('div', undefined, { class: item === fresh ? 'row fresh' : 'row' });
       // Search inputs are excluded by Bitwarden even when ignore hints are disabled.
@@ -305,18 +316,43 @@ export function createEditor(container, { address, scope: opened = 'global', sta
         if (item === fresh && item.tag.trim() && !untouched()) { lines.push(fresh); fresh = blank(); renderLines(index, true); return; }
         showLine(item, row); if (item === fresh) attribution(); updateControls();
       };
-      // Alt and an arrow moves a tag. Within one network, the first is the one
-      // a page shows.
+      // Order is priority: within one network, the first is the one a page
+      // shows. A row is dragged by its handle, or moved with Alt and an arrow.
       input.setAttribute('aria-keyshortcuts', 'Alt+ArrowUp Alt+ArrowDown');
       input.addEventListener('keydown', event => {
         const step = event.altKey && { ArrowUp: -1, ArrowDown: 1 }[event.key];
         const to = index + step;
         if (!step || phase !== 'idle' || item === fresh || to < 0 || to >= lines.length) return;
         event.preventDefault();
-        const other = lines[to];
-        [lines[index], lines[to]] = [other, item];
-        if (other.scope === item.scope) { item.moved = true; other.moved = true; }
-        renderLines(to);
+        const order = [...lines];
+        [order[index], order[to]] = [order[to], item];
+        reorder(order, to);
+      });
+      if (item !== fresh && lines.length > 1) {
+        const grip = element('span', undefined, { class: 'grip', title: 'Drag to reorder', 'aria-hidden': 'true' });
+        grip.innerHTML = GRIP_ICON;
+        // Only the handle starts a drag, so selecting text in the field still works.
+        grip.onpointerdown = () => { if (phase === 'idle') row.draggable = true; };
+        grip.onpointerup = () => { row.draggable = false; };
+        // A drag moves the rows themselves; the order is read back from them
+        // once it is let go, so nothing is held against a row that has moved.
+        row.addEventListener('dragstart', event => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', ''); row.classList.add('dragging'); });
+        row.addEventListener('dragend', () => {
+          row.draggable = false;
+          const order = [...get('.lines').children].map(child => items[child.dataset.index]).filter(other => other !== fresh);
+          reorder(order, order.indexOf(item));
+        });
+        row.prepend(grip);
+      }
+      row.dataset.index = index;
+      // The new line stays last; a row dragged over it stops just above it.
+      row.addEventListener('dragover', event => {
+        const held = get('.lines .dragging');
+        if (!held) return;
+        event.preventDefault();
+        if (held === row) return;
+        const after = item !== fresh && [...row.parentNode.children].indexOf(held) < [...row.parentNode.children].indexOf(row);
+        row.parentNode.insertBefore(held, after ? row.nextSibling : row);
       });
       const network = element('button', undefined, { type: 'button', class: 'network', 'aria-haspopup': 'listbox', 'aria-expanded': 'false' });
       network.innerHTML = `<span class="network-mark"></span><span class="symbol" aria-hidden="true"></span><span class="save-scope"></span>${CHEVRON_ICON}`;
