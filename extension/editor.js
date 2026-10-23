@@ -278,6 +278,8 @@ export function createEditor(container, { address, scope: opened = 'global', sta
     row.querySelector('.save-scope').textContent = scopeName(item.scope);
     row.querySelector('.network').title = `Network: ${scopeName(item.scope)}`;
     row.querySelector('.network').classList.toggle('everywhere', item.scope === 'global');
+    // A name too long for its line can be read whole on hover.
+    row.querySelector('input').title = item.tag;
     const remove = row.querySelector('.remove');
     if (remove) {
       const index = all().indexOf(item) + 1;
