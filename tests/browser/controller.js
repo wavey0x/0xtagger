@@ -54,7 +54,9 @@ export const edit = (page, index = 0) => page.getByRole('button', { name: 'Edit 
 // an inline display, inside one that would otherwise push it onto its own line.
 export const tagFor = (page, id) => page.locator(`#${id} + [data-0xtagger-edit], #${id} [data-0xtagger-edit]`).getByRole('button');
 export const input = page => page.getByRole('textbox', { name: 'Tag 1', exact: true });
-export const save = page => page.getByRole('button', { name: 'Save', exact: true });
+// Enter saves: pressed in the first line waiting to be saved, the new line, or a removed line's undo.
+export const save = page => page.getByRole('dialog').locator('.row.dirty input:not(:disabled), .row.fresh input, .row.removed .remove').first();
+export const submit = page => save(page).press('Enter');
 export const shownAddress = page => page.getByRole('dialog').locator('code');
 export const health = page => page.evaluate(() => window.controller.health);
 // What the toolbar is told: the controller's own health plus the adapter reading the page.

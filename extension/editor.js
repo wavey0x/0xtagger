@@ -2,7 +2,7 @@ import { findRecord, MAX_TAG_LENGTH, normalizeTags, sameTags, sourceName, usable
 import { checksumAddress } from './checksum.js';
 import { chainLogos } from './vendor/chain-logos.js';
 import { quickNetworks, scopeName, scopeSymbol } from './networks.js';
-import { EDITOR_MARK, COPY_ICON, COPIED_ICON, EYE_ICON, EYE_OFF_ICON, GLOBE_ICON, CHEVRON_ICON, CHECK_ICON, CLOSE_ICON, UNDO_ICON, GRIP_ICON, confirmCopied } from './icons.js';
+import { EDITOR_MARK, COPY_ICON, COPIED_ICON, EYE_ICON, EYE_OFF_ICON, GLOBE_ICON, CHEVRON_ICON, CLOSE_ICON, UNDO_ICON, GRIP_ICON, PLUS_ICON, confirmCopied } from './icons.js';
 
 const element = (tag, text, attrs = {}) => {
   const node = document.createElement(tag);
@@ -77,7 +77,10 @@ export function createEditor(container, { address, scope: opened = 'global', sta
   // The last line is always there for a new tag, and saves like any other.
   const blank = (tag = '') => ({ tag, scope: opened, saved: null, removed: false, moved: false });
   let fresh = blank(prefill ? prefill.name : '');
-  const all = () => [...lines, fresh];
+  // The new line shows only when it is needed: for an address with no tags,
+  // or once "+" is pressed. Otherwise the list is just the tags.
+  let adding = false;
+  const all = () => (!lines.length || adding || fresh.tag.trim() ? [...lines, fresh] : [...lines]);
   // Compared as a save would store it, so a stray space is not an edit.
   const pending = item => !item.saved ? Boolean(item.tag.trim())
     : item.removed || item.moved || item.tag.trim() !== item.saved.tag || item.scope !== item.saved.scope;
@@ -93,9 +96,9 @@ export function createEditor(container, { address, scope: opened = 'global', sta
 
   const panel = element(modal ? 'dialog' : 'section', undefined, { class: 'editor', role: 'dialog', 'aria-label': 'Edit wallet tags' });
   panel.innerHTML = `<header><span class="brand" role="img" aria-label="0xtagger">${EDITOR_MARK}<svg class="sheen" aria-hidden="true"><linearGradient id="brand-sheen" x1="0" y1="0" x2="1" y2="1"><stop offset="0"/><stop offset="1"/></linearGradient></svg></span><code></code><button type="button" class="quiet copy" aria-label="Copy">${COPY_ICON}</button><span class="source"></span>${visibility ? '<div class="visibility-group"><button type="button" class="quiet visibility" role="switch" aria-label="Show my tags for this address" aria-checked="true"></button></div>' : `<button type="button" class="quiet close" aria-label="Close editor" title="Close">${CLOSE_ICON}</button>`}</header>
-    <div class="lines"></div><div class="networks" role="listbox" aria-label="Save for" popover="manual"></div>
+    <div class="lines"></div><button type="button" class="quiet add" aria-label="Add tag" title="Add tag">${PLUS_ICON}</button><div class="networks" role="listbox" aria-label="Save for" popover="manual"></div>
     <p class="offer" hidden></p><p class="notice" role="status"></p><div class="conflict" hidden></div>
-    <div class="extras">${modal && own ? '<button type="button" class="quiet clear">Remove tags</button>' : ''}<button type="button" class="primary save-all" hidden>Save all</button></div>`;
+    <div class="extras">${modal && own ? '<button type="button" class="quiet clear">Remove tags</button>' : ''}</div>`;
   container.replaceChildren(panel);
   if (modal) panel.showModal();
   const get = selector => panel.querySelector(selector);
@@ -145,7 +148,7 @@ export function createEditor(container, { address, scope: opened = 'global', sta
   if (visibility) get('.visibility').onclick = () => { if (!closed) { toggleVisibility(); updateVisibility(); } };
   else get('.close').onclick = finish;
   if (modal) panel.addEventListener('cancel', event => { event.preventDefault(); finish(); });
-  if (get('.clear')) get('.clear').onclick = () => { lines.forEach(item => { item.removed = true; }); fresh = blank(); renderLines(null); };
+  if (get('.clear')) get('.clear').onclick = () => { lines.forEach(item => { item.removed = true; }); fresh = blank(); adding = false; renderLines(null); get('.remove')?.focus(); };
   get('.copy').onclick = async () => {
     try {
       await navigator.clipboard.writeText(displayAddress);
@@ -178,7 +181,7 @@ export function createEditor(container, { address, scope: opened = 'global', sta
       const named = choice !== 'global' && known(choice).tags.join(', ');
       if (named) { option.append(element('i', undefined, { class: 'own' })); option.title = named; }
       option.append(element('span', scopeSymbol(choice), { class: 'symbol' }));
-      option.onclick = () => { closeMenu(); item.scope = choice; renderLines(null); rowOf(item)?.querySelector('.network').focus(); };
+      option.onclick = () => { closeMenu(); item.scope = choice; renderLines(null); (rowOf(item)?.querySelector('input:not(:disabled)') || rowOf(item)?.querySelector('.network'))?.focus(); };
       return option;
     }));
     menuFor = { item, button };
@@ -239,7 +242,7 @@ export function createEditor(container, { address, scope: opened = 'global', sta
     get('.offer').replaceChildren();
     if (spare) {
       const button = element('button', 'Add tag', { type: 'button', class: 'quiet' });
-      button.onclick = () => { fresh.tag = offered.name; renderLines(null); rowOf(fresh)?.querySelector('input').focus(); };
+      button.onclick = () => { fresh.tag = offered.name; adding = true; renderLines(null); rowOf(fresh)?.querySelector('input').focus(); };
       get('.offer').append(element('span', offered.name), button);
     }
   }
@@ -250,14 +253,13 @@ export function createEditor(container, { address, scope: opened = 'global', sta
     queueMicrotask(onLayout);
   }
   const rowOf = item => [...panel.querySelectorAll('.row')][all().indexOf(item)];
-  // One line's state, said on the line: an edge and a lit check while it has
-  // something to save, nothing at all once it is saved.
+  // One line's state, said on the line: tinted while it has something to save,
+  // plain once it is saved. Enter saves; there is no button to find.
   function showLine(item, row = rowOf(item)) {
     if (!row) return;
     const waiting = pending(item);
     row.classList.toggle('dirty', waiting);
     row.classList.toggle('removed', item.removed);
-    row.querySelector('.save').hidden = !waiting;
     row.querySelector('.network-mark').innerHTML = networkMark(item.scope);
     row.querySelector('.symbol').textContent = scopeSymbol(item.scope);
     row.querySelector('.save-scope').textContent = scopeName(item.scope);
@@ -273,19 +275,17 @@ export function createEditor(container, { address, scope: opened = 'global', sta
   function updateControls() {
     updateVisibility();
     const busy = phase !== 'idle';
-    const locked = busy || activeState.activeBook !== book;
     panel.querySelectorAll('.row').forEach((row, index) => {
       const item = all()[index];
       row.querySelector('input').disabled = busy || Boolean(item?.removed);
       row.querySelector('.network').disabled = busy;
-      row.querySelector('.save').disabled = locked;
       const remove = row.querySelector('.remove');
       if (remove) remove.disabled = busy;
     });
-    const waiting = all().filter(pending).length;
-    get('.save-all').hidden = waiting < 2;
-    get('.save-all').textContent = `Save all ${waiting}`;
-    get('.save-all').disabled = locked;
+    get('.extras').hidden = !get('.clear');
+    // "+" waits until there is a tag to add another to.
+    get('.add').hidden = all().includes(fresh) && !fresh.tag.trim();
+    get('.add').disabled = busy;
     if (get('.clear')) get('.clear').disabled = busy || !lines.some(item => !item.removed);
   }
   // A new order for the lines. Tags whose order changed within their network
@@ -298,6 +298,14 @@ export function createEditor(container, { address, scope: opened = 'global', sta
     lines = order;
     renderLines(focusAt);
   }
+  // "+" opens the new line; pressed again with a tag in it, that tag becomes a
+  // line of its own and a new blank opens under it.
+  get('.add').onclick = () => {
+    if (phase !== 'idle') return;
+    if (all().includes(fresh) && fresh.tag.trim()) { lines.push(fresh); fresh = blank(); }
+    adding = true;
+    renderLines(lines.length);
+  };
   function renderLines(focusAt = 0, typing = false) {
     const items = all();
     get('.lines').classList.toggle('ranked', lines.length > 1);
@@ -311,9 +319,6 @@ export function createEditor(container, { address, scope: opened = 'global', sta
       // Typing changes no panel geometry; avoid positioning/layout work per letter.
       input.oninput = () => {
         item.tag = input.value;
-        // A tag typed into the last line makes it a line of its own, with a new
-        // blank under it, so several tags can be written before one Save.
-        if (item === fresh && item.tag.trim() && !untouched()) { lines.push(fresh); fresh = blank(); renderLines(index, true); return; }
         showLine(item, row); if (item === fresh) attribution(); updateControls();
       };
       // Order is priority: within one network, the first is the one a page
@@ -357,11 +362,10 @@ export function createEditor(container, { address, scope: opened = 'global', sta
       const network = element('button', undefined, { type: 'button', class: 'network', 'aria-haspopup': 'listbox', 'aria-expanded': 'false' });
       network.innerHTML = `<span class="network-mark"></span><span class="symbol" aria-hidden="true"></span><span class="save-scope"></span>${CHEVRON_ICON}`;
       network.onclick = () => { if (menuFor?.item === item) closeMenu(); else openMenu(item, network); };
-      const check = element('button', undefined, { type: 'button', class: 'primary save', 'aria-label': 'Save', title: bookName ? `Save to ${bookName}` : 'Save (Enter)' });
-      check.innerHTML = CHECK_ICON;
-      // The editor shares the page DOM. Website scripts must not submit the book.
-      check.addEventListener('click', event => { if (event.isTrusted) commit([item], check); });
-      row.append(input, network, check);
+      // Where Save was, a quiet hint while the line has something to save, and
+      // the tick that confirms it once it is saved.
+      const mark = element('span', '↵', { class: 'mark', 'aria-hidden': 'true', title: 'Press Enter to save' });
+      row.append(input, network, mark);
       if (item !== fresh) {
         const remove = element('button', undefined, { type: 'button', class: 'quiet remove' });
         // A line never saved has nothing to keep: removing it is immediate.
@@ -381,7 +385,6 @@ export function createEditor(container, { address, scope: opened = 'global', sta
     const input = panel.querySelectorAll('.row input')[focusAt];
     if (input && !input.disabled) { input.focus(); if (typing) input.setSelectionRange(input.value.length, input.value.length); else input.select(); }
   }
-  get('.save-all').addEventListener('click', event => { if (event.isTrusted) commit(all().filter(pending), get('.save-all')); });
 
   // The lists a save of these lines writes: for each network they touch, every
   // line in order, with these lines as they are now and the rest as saved.
@@ -416,14 +419,16 @@ export function createEditor(container, { address, scope: opened = 'global', sta
       else if (item.saved && scopes.has(item.saved.scope)) item.moved = false;
     }
     if (chosen.includes(fresh) && fresh.tag.trim()) { lines.push(line(fresh.tag.trim(), fresh.scope)); fresh = blank(); }
+    adding = false;
   }
   let retry = null;
-  async function commit(chosen, button) {
+  async function commit(chosen) {
     if (closed || phase !== 'idle' || activeState.activeBook !== book || !chosen.length) return;
     let writes;
     try { writes = plan(chosen).map(entry => ({ ...entry, tags: normalizeTags(entry.tags) })); }
     catch (error) { get('.notice').textContent = error.message; queueMicrotask(onLayout); return; }
-    retry = () => commit(chosen, button);
+    retry = () => commit(chosen);
+    const rows = chosen.map(item => rowOf(item)).filter(Boolean);
     phase = 'saving';
     guard();
     let at = null;
@@ -442,20 +447,21 @@ export function createEditor(container, { address, scope: opened = 'global', sta
       phase = 'saved';
       guard();
       // Confirm the write first; a small local animation never determines
-      // whether a save succeeded. The button gives a little under the press
-      // and comes back past where it started, while a ring leaves it and the
-      // tick draws itself on. Brief enough to be over before anyone waits.
-      button.innerHTML = COPIED_ICON;
-      button.classList.add('confirmed');
-      button.setAttribute('aria-label', 'Saved');
-      button.hidden = false;
-      const frames = matchMedia('(prefers-reduced-motion: reduce)').matches ? [{ opacity: 1 }, { opacity: 1 }] : [
-        { transform: 'scale(1)', boxShadow: '0 0 0 0 var(--0xtagger-accent-glow)' },
-        { transform: 'scale(.95)', boxShadow: '0 0 0 2px var(--0xtagger-accent-pulse)', offset: .2 },
-        { transform: 'scale(1.05)', boxShadow: '0 0 0 8px transparent', offset: .62 },
-        { transform: 'scale(1)', boxShadow: '0 0 0 0 transparent' },
-      ];
-      await button.animate(frames, { duration: 340, easing: 'cubic-bezier(.2,.9,.3,1)' }).finished.catch(() => {});
+      // whether a save succeeded. Each saved line's tick draws itself on in
+      // green while a ring leaves it. Brief enough to be over before anyone waits.
+      const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+      await Promise.all(rows.map(row => {
+        const tick = row.querySelector('.mark');
+        tick.innerHTML = COPIED_ICON;
+        tick.classList.add('confirmed');
+        row.classList.add('saved');
+        return tick.animate(still ? [{ opacity: 1 }, { opacity: 1 }] : [
+          { transform: 'scale(.6)', opacity: 0, boxShadow: '0 0 0 0 var(--0xtagger-success-pulse, transparent)' },
+          { transform: 'scale(1.12)', opacity: 1, offset: .45 },
+          { transform: 'scale(1)', opacity: 1, boxShadow: '0 0 0 7px transparent' },
+        ], { duration: 320, easing: 'cubic-bezier(.2,.9,.3,1)' }).finished.catch(() => {});
+      }));
+      if (!still) await new Promise(resolve => setTimeout(resolve, 140));
       // Nothing left to save closes the editor; anything still waiting keeps it open.
       if (!all().some(pending)) { finish(); return; }
       phase = 'idle';
@@ -469,7 +475,7 @@ export function createEditor(container, { address, scope: opened = 'global', sta
       // which is answer enough; everything else leaves only the notice, so the
       // button says it too.
       if (error.status !== 409) {
-        button.animate(matchMedia('(prefers-reduced-motion: reduce)').matches ? REFUSED_STILL : REFUSED,
+        for (const row of rows) row.animate(matchMedia('(prefers-reduced-motion: reduce)').matches ? REFUSED_STILL : REFUSED,
           { duration: 300, easing: 'ease-out' });
       }
       // A refusal only ever means the book now says something else for one
@@ -506,14 +512,13 @@ export function createEditor(container, { address, scope: opened = 'global', sta
   }
   panel.addEventListener('keydown', event => {
     if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); finish(); }
-    if (event.isTrusted && event.key === 'Enter' && event.target.matches('.row input') && !event.isComposing) {
+    // Enter saves every line with something to save, from a tag or from the
+    // control that just marked one for removal; with nothing waiting, it closes.
+    if (event.isTrusted && event.key === 'Enter' && event.target.matches('.row input, .remove') && !event.isComposing) {
       event.preventDefault(); event.stopPropagation();
-      const row = event.target.closest('.row');
-      const item = all()[[...panel.querySelectorAll('.row')].indexOf(row)];
-      // Enter saves the line it is pressed in; on a line with nothing to save
-      // and nothing waiting anywhere, it closes.
-      if (item && pending(item)) commit([item], row.querySelector('.save'));
-      else if (!all().some(pending)) finish();
+      const waiting = all().filter(pending);
+      if (waiting.length) commit(waiting);
+      else finish();
     }
   });
   guard();

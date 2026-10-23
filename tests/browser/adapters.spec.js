@@ -283,7 +283,7 @@ test.describe('Etherscan token holders', () => {
     await start(page, { site, html: table(row()), framed: true, records: [] });
     await page.getByRole('button', { name: 'Edit wallet tags' }).click();
     await expect(page.getByRole('textbox', { name: 'Tag 1', exact: true })).toHaveValue('Curve: Fee Receiver');
-    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await page.getByRole('textbox', { name: 'Tag 1', exact: true }).press('Enter');
     await expect.poll(() => page.evaluate(() => window.saves.at(-1)))
       .toMatchObject({ address, scope: 'eip155:1', tags: ['Curve: Fee Receiver'], source: 'etherscan:page' });
   });

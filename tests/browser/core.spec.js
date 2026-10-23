@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { checksumAddress } from '../../extension/checksum.js';
-import { address, other, record, start, edit, input, save, shownAddress, contrast, tagFor, wallets } from './controller.js';
+import { address, other, record, start, edit, input, save, submit, shownAddress, contrast, tagFor, wallets } from './controller.js';
 
 test('500 addresses retain native text, navigation, selection and copying; disabling removes only our UI', async ({ page }) => {
   const row = `<p><a href="/address/${address}">0xabab…abab</a><button data-copy="${address}">Copy</button></p>`;
@@ -54,9 +54,9 @@ test('each tag line has its own network, and moving one saves both lists', async
   await edit(page).click();
   const dialog = page.getByRole('dialog');
   const menu = page.getByRole('listbox', { name: 'Save for' });
-  expect(await dialog.locator('.row input').evaluateAll(inputs => inputs.map(input => input.value))).toEqual(['Treasury', 'Operations', 'Base vault', '']);
-  await expect(dialog.locator('.save-scope')).toHaveText(['All networks', 'All networks', 'Base', 'All networks']);
-  await expect(save(page)).toHaveCount(0);
+  expect(await dialog.locator('.row input').evaluateAll(inputs => inputs.map(input => input.value))).toEqual(['Treasury', 'Operations', 'Base vault']);
+  await expect(dialog.locator('.save-scope')).toHaveText(['All networks', 'All networks', 'Base']);
+  await expect(dialog.locator('.row.dirty')).toHaveCount(0);
   await dialog.locator('.network').nth(1).click();
   await expect(menu.getByRole('option', { name: /Base/ })).toHaveAttribute('title', 'Base vault');
   await menu.getByRole('option', { name: /Arbitrum/ }).focus();
@@ -65,12 +65,14 @@ test('each tag line has its own network, and moving one saves both lists', async
   await expect(dialog.locator('.save-scope').nth(1)).toHaveText('Arbitrum');
   await expect(dialog.locator('.row').nth(1)).toHaveClass(/dirty/);
   await expect(dialog.locator('.row').nth(0)).not.toHaveClass(/dirty/);
-  // The new line picks its own network too.
+  // "+" opens a new line, which picks its own network too.
+  await dialog.getByRole('button', { name: 'Add tag', exact: true }).click();
+  await expect(dialog.getByRole('button', { name: 'Add tag', exact: true })).toBeHidden();
   await dialog.locator('.network').nth(3).click();
   await menu.getByRole('option', { name: /Base/ }).click();
   await dialog.locator('.row input').nth(3).fill('Base router');
-  await expect(page.getByRole('button', { name: 'Save all 2' })).toBeVisible();
-  await page.getByRole('button', { name: 'Save all 2' }).click();
+  await expect(dialog.locator('.row.dirty')).toHaveCount(2);
+  await submit(page);
   await expect(dialog).toHaveCount(0);
   const saves = await page.evaluate(() => window.saves);
   expect(saves).toHaveLength(3);
@@ -87,9 +89,9 @@ test('dragging a tag by its handle reorders its network, waiting for Save', asyn
   await edit(page).click();
   const dialog = page.getByRole('dialog');
   await dialog.locator('.row').nth(1).locator('.grip').dragTo(dialog.locator('.row').nth(0), { targetPosition: { x: 40, y: 4 } });
-  expect(await dialog.locator('.row input').evaluateAll(inputs => inputs.map(input => input.value))).toEqual(['Operations', 'Treasury', '']);
+  expect(await dialog.locator('.row input').evaluateAll(inputs => inputs.map(input => input.value))).toEqual(['Operations', 'Treasury']);
   await expect(dialog.locator('.row.dirty')).toHaveCount(2);
-  await page.getByRole('button', { name: 'Save all 2' }).click();
+  await submit(page);
   await expect(dialog).toHaveCount(0);
   expect(await page.evaluate(() => window.saves)).toEqual([expect.objectContaining({ scope: 'global', tags: ['Operations', 'Treasury'], version: 'one' })]);
 });
@@ -99,7 +101,7 @@ test('a pending save sends one write and its late completion cannot close a newe
   await edit(page).click();
   await page.evaluate(() => { window.saveGate = new Promise(resolve => { window.releaseSave = resolve; }); });
   await input(page).fill('First draft');
-  await save(page).click();
+  await submit(page);
   await expect(input(page)).toBeDisabled();
   await page.locator('body > header').click();
   await edit(page, 1).click();
@@ -131,11 +133,11 @@ test('outside dismissal cancels the draft and preserves native focus and copy ac
 });
 
 test('website-script clicks and keypresses cannot submit edits', async ({ page }) => {
-  for (const gesture of ['click', 'Enter']) {
+  for (const gesture of ['remove', 'Enter']) {
     await start(page);
     await edit(page).click();
     await input(page).fill('Scripted edit');
-    if (gesture === 'click') await save(page).dispatchEvent('click');
+    if (gesture === 'remove') await page.getByRole('dialog').locator('.remove').first().dispatchEvent('keydown', { key: 'Enter' });
     else await input(page).dispatchEvent('keydown', { key: 'Enter' });
     expect(await page.evaluate(() => window.saves.length)).toBe(0);
     await expect(input(page)).toHaveValue('Scripted edit');
@@ -161,7 +163,7 @@ test('the address switch reveals all matching addresses without changing the dra
   }, { address });
   await expect(page.locator('[data-0xtagger-address]')).toHaveCount(3);
   await expect(page.locator('[data-0xtagger-tag]')).toHaveCount(0);
-  await save(page).click();
+  await submit(page);
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.locator('[data-0xtagger-tag]')).toHaveCount(0);
   await edit(page).click();
@@ -188,7 +190,7 @@ test('Safe resolves loading and composed addresses; the address switch isolates 
   await edit(page).click();
   await page.getByRole('switch', { name: 'Show my tags for this address' }).click();
   await page.getByRole('button', { name: 'Remove tag 1' }).click();
-  await save(page).click();
+  await submit(page);
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(await page.evaluate(() => window.saves[0])).toMatchObject({ address, scope: 'eip155:1', tags: [], version: 'network' });
   await expect(page.locator('#wallet')).not.toHaveAttribute('data-0xtagger-tag');
@@ -213,7 +215,9 @@ test('switching address books resets comparisons, preserve source-bound drafts a
       books: [...window.state.books, { id: 'book-2', name: 'Team', where: 'remote.example' }],
       records: [{ ...window.state.records[0], tags: ['Remote'] }] }));
   await expect(page.locator('#first')).toHaveAttribute('data-0xtagger-tag', 'Remote');
-  await expect(save(page)).toBeDisabled();
+  await expect(page.locator('.notice')).toContainText('You switched to Team');
+  await input(page).press('Enter');
+  expect(await page.evaluate(() => window.saves.length)).toBe(0);
   await expect(input(page)).toHaveValue('Local draft');
   await expect(page.locator('.visibility')).toBeDisabled();
   await page.locator('.visibility').dispatchEvent('click');
@@ -222,7 +226,7 @@ test('switching address books resets comparisons, preserve source-bound drafts a
   await expect(page.locator('#first')).toHaveAttribute('data-0xtagger-tag', 'Remote');
   await page.evaluate(() => window.controller.updateState({ ...window.state, stateRevision: 5 }));
   await expect(page.locator('#first')).toHaveAttribute('data-0xtagger-tag', 'Treasury');
-  await expect(save(page)).toBeEnabled();
+  await expect(page.locator('.notice')).toHaveText('');
   await expect(input(page)).toHaveValue('Local draft');
 });
 
@@ -236,7 +240,7 @@ test('recycled rows cannot redirect an open draft or its visibility control to a
   await expect(page.locator('.visibility')).toBeDisabled();
   await page.locator('.visibility').dispatchEvent('click');
   await expect(link).toHaveAttribute('data-0xtagger-tag', 'Other wallet');
-  await save(page).click();
+  await submit(page);
   expect(await page.evaluate(() => window.saves[0].address)).toBe(address);
   await expect(link).toHaveAttribute('data-0xtagger-tag', 'Other wallet');
 });
@@ -250,7 +254,7 @@ test('an inconsistent integration clears annotations but preserves its draft; re
   await expect(page.locator('[data-0xtagger-address],[data-0xtagger-tag]')).toHaveCount(0);
   await expect(input(page)).toHaveValue('Still safe');
   await expect(page.locator('.visibility')).toBeDisabled();
-  await save(page).click();
+  await submit(page);
   expect(await page.evaluate(() => window.saves[0].tags[0])).toBe('Still safe');
   await page.evaluate(() => window.controller.retry());
   expect(await page.evaluate(() => window.controller.health.status)).toBe('stale');
@@ -263,11 +267,11 @@ test('failed and conflicting saves retain the draft; a refusal offers both answe
   await edit(page).click();
   await input(page).fill('My edit');
   await page.evaluate(() => { window.saveError='Offline'; });
-  await save(page).click();
+  await submit(page);
   await expect(input(page)).toBeEnabled();
   await expect(input(page)).toHaveValue('My edit');
   await page.evaluate(({ record }) => { window.saveError='Conflict'; window.conflict={ ...record, tags:['Newer name'], version:'newer' }; }, { record });
-  await save(page).click();
+  await submit(page);
   await expect(input(page)).toHaveValue('My edit');
   // A book answering with something else shows its own panel, which says it
   // plainly enough without the button saying it too.
@@ -281,7 +285,7 @@ test('failed and conflicting saves retain the draft; a refusal offers both answe
   await expect(page.locator('.conflict')).toBeHidden();
   await page.evaluate(() => { window.saveError=null; });
   await input(page).fill('Newer name, mine');
-  await save(page).click();
+  await submit(page);
   await expect.poll(() => page.evaluate(() => window.saves.at(-1))).toMatchObject({ address, tags: ['Newer name, mine'], version: 'newer' });
 });
 
@@ -321,7 +325,7 @@ test('a draft nobody has touched follows the book; one with typing in it is neve
   // Saving the followed draft carries that record's version, so a book written
   // elsewhere is not asked to resolve a conflict that no longer exists.
   await input(page).fill('Saved here');
-  await save(page).click();
+  await submit(page);
   await expect.poll(() => page.evaluate(() => window.saves.at(-1))).toMatchObject({ tags: ['Saved here'], version: 'from-elsewhere-Saved in another tab' });
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
@@ -359,7 +363,7 @@ test('editing a search suggestion survives native blur dismissal without selecti
   await expect(page.locator('#suggestions')).toBeHidden();
   expect(await page.evaluate(() => window.nativeSearchSelection)).toBeUndefined();
   await input(page).fill('Search tag');
-  await save(page).click();
+  await submit(page);
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(await page.evaluate(() => window.saves[0])).toMatchObject({ address, tags: ['Search tag', 'Operations'] });
   await search.click();
@@ -572,15 +576,6 @@ const legible = async (page, surface) => {
   const glyph = await edit(page).evaluate(element => getComputedStyle(element).color);
   expect(contrast(painted, behind), `${surface}: tag on the page`).toBeGreaterThanOrEqual(4.5);
   expect(contrast(glyph, behind), `${surface}: tag button on the page`).toBeGreaterThanOrEqual(4.5);
-  await edit(page).click();
-  // Save is filled once there is something to save.
-  await input(page).fill('Treasury rename');
-  const primary = await save(page).evaluate(element => {
-    const style = getComputedStyle(element);
-    return { ink: style.color, fill: style.backgroundColor };
-  });
-  expect(contrast(primary.ink, primary.fill), `${surface}: Save tag on its own fill`).toBeGreaterThanOrEqual(4.5);
-  await input(page).press('Escape');
 };
 
 test('tags, tag buttons and editor controls stay legible on light and dark websites', async ({ page }) => {
@@ -650,7 +645,7 @@ test.describe('a name the website already shows', () => {
   test('saving it keeps where it came from; rewriting it first does not', async ({ page }) => {
     await open(page, labelled('row', other, 'Uniswap V3: Router'), [record]);
     await tagFor(page, 'row').click();
-    await save(page).click();
+    await submit(page);
     // The aside is never part of what is stored.
     await expect.poll(() => page.evaluate(() => window.saves.at(-1)))
       .toMatchObject({ address: other, tags: ['Uniswap V3: Router'], source: 'etherscan:page' });
@@ -659,7 +654,7 @@ test.describe('a name the website already shows', () => {
     await tagFor(page, 'row').click();
     await input(page).fill('The router we use');
     await expect(fromSite(page)).toHaveCount(0);
-    await save(page).click();
+    await submit(page);
     const written = await page.evaluate(() => window.saves.at(-1));
     expect(written.tags).toEqual(['The router we use']);
     expect(written.source).toBe(undefined);
@@ -674,7 +669,7 @@ test.describe('a name the website already shows', () => {
     await expect(fromSite(page)).toHaveCount(0);
     await expect(offer(page)).toContainText('Uniswap V3: Router');
     await offer(page).getByRole('button', { name: 'Add tag' }).click();
-    await save(page).click();
+    await submit(page);
     await expect.poll(() => page.evaluate(() => window.saves.at(-1))).toMatchObject({
       tags: ['Treasury', 'Operations', 'Uniswap V3: Router'],
     });
@@ -694,7 +689,7 @@ test.describe('a name the website already shows', () => {
     await open(page, labelled('row', other, 'Uniswap V3: Router'), [record]);
     await tagFor(page, 'row').click();
     await expect(page.getByRole('dialog').locator('.save-scope')).toHaveText('Ethereum');
-    await save(page).click();
+    await submit(page);
     await expect.poll(() => page.evaluate(() => window.saves.at(-1)))
       .toMatchObject({ address: other, scope: 'eip155:1' });
   });
@@ -765,7 +760,7 @@ test.describe('a name the website already shows', () => {
     await tagFor(page, 'row').click();
     await expect(input(page)).toHaveValue('Mog Coin');
     await expect(fromSite(page)).toHaveText('(from Etherscan)');
-    await save(page).click();
+    await submit(page);
     await expect.poll(() => page.evaluate(() => window.saves.at(-1)))
       .toMatchObject({ address: other, scope: 'eip155:1', tags: ['Mog Coin'], source: 'etherscan:page' });
   });
@@ -818,45 +813,28 @@ test.describe('a name the website already shows', () => {
   });
 });
 
-// The accent does two jobs: words on a dark website have to be light enough to
-// read, and words on a filled control have to be dark enough to sit under
-// white. One colour cannot do both, so the filled surfaces keep their own.
-test('a filled control writes in white, on a purple dark enough to carry it', async ({ page }) => {
+// Enter saves, and each saved line confirms it with a tick that draws on in
+// white on a green dark enough to carry it, on light and dark websites alike.
+test('a saved line confirms with a white tick on green', async ({ page }) => {
   for (const [scheme, surface] of [['light', '#ffffff'], ['dark', '#101113']]) {
     await page.emulateMedia({ colorScheme: scheme });
     await start(page, { html: `<style>html{background:${surface}}</style>` + wallets });
     await tagFor(page, 'first').click();
-    // Save is filled once there is something to save.
     await input(page).fill('Treasury rename');
-    const button = save(page);
-    const [ink, fill] = await button.evaluate(node =>
-      [getComputedStyle(node).color, getComputedStyle(node).backgroundColor]);
-    expect(ink, `${scheme}: a filled control writes in white`).toBe('rgb(255, 255, 255)');
-    expect(contrast(ink, fill), `${scheme}: Save against its own fill`).toBeGreaterThanOrEqual(4.5);
+    await expect(page.getByRole('dialog').locator('.row.dirty .mark')).toBeVisible();
+    await submit(page);
+    const stroke = page.getByRole('dialog').locator('.mark.confirmed svg path');
+    await expect(stroke).toHaveAttribute('stroke-dasharray', '14.2');
+    const [drawn, ink, fill] = await stroke.evaluate(node => {
+      const mark = node.closest('.mark');
+      return [getComputedStyle(node).stroke, getComputedStyle(mark).color, getComputedStyle(mark).backgroundColor];
+    });
+    expect(drawn).toBe(ink);
+    expect(ink, `${scheme}: the tick is white`).toBe('rgb(255, 255, 255)');
+    expect(contrast(ink, fill), `${scheme}: tick against its green`).toBeGreaterThanOrEqual(4.5);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
   }
   await page.emulateMedia({ colorScheme: null });
-});
-
-// A tick drawn in the accent on a button filled with the accent is a
-// confirmation nobody can see.
-test('the saved tick is drawn in the colour the button writes in', async ({ page }) => {
-  await start(page);
-  await tagFor(page, 'first').click();
-  await input(page).fill('Treasury rename');
-  await save(page).click();
-  const stroke = page.getByRole('dialog').locator('.save.confirmed svg path');
-  await expect(stroke).toHaveAttribute('stroke-dasharray', '14.2');
-  const [drawn, ink] = await stroke.evaluate(node =>
-    [getComputedStyle(node).stroke, getComputedStyle(node.closest('button')).color]);
-  expect(drawn).toBe(ink);
-  expect(drawn).toBe('rgb(74, 222, 128)');
-  // The button is held shut while it confirms, and a faded fill would leave
-  // the tick with nothing to be read against — a declared colour says 5:1
-  // while the eye sees the panel behind it.
-  const [fill, faded] = await page.getByRole('dialog').locator('.save.confirmed')
-    .evaluate(node => [getComputedStyle(node).backgroundColor, getComputedStyle(node).opacity]);
-  expect(faded, 'a confirming button is locked, not faded').toBe('1');
-  expect(contrast(drawn, fill)).toBeGreaterThanOrEqual(3);
 });
 
 // A record already saved carries its words as its own, whatever they were
@@ -880,7 +858,7 @@ test('a website script cannot settle a conflict on the book', async ({ page }) =
   await edit(page).click();
   await input(page).fill('My edit');
   await page.evaluate(({ record }) => { window.saveError = 'Conflict'; window.conflict = { ...record, tags: ['Newer name'], version: 'newer' }; }, { record });
-  await save(page).click();
+  await submit(page);
   await expect(page.locator('.conflict')).toBeVisible();
   const asked = await page.evaluate(() => window.saves.length);
   // What a script on the page can do: find our panel and press the answer that

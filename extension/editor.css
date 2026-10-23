@@ -52,20 +52,26 @@ header .close { margin-left: auto; }
 .row input:focus-visible { outline: none; }
 .row input::-webkit-search-cancel-button { display: none; }
 /* The line for a new tag is drawn, not filled, until it holds one. */
-.row.fresh { padding-right: 29px; border: 1px dashed var(--0xtagger-line); background: transparent; }
+.row.fresh { border: 1px dashed var(--0xtagger-line); background: transparent; }
 .row.fresh:focus-within { border-style: solid; }
-/* Unsaved: tinted, with an accent edge, and its Save lit. Saved lines are plain. */
-.row.dirty { background: var(--0xtagger-accent-soft); border-style: solid; border-color: transparent; }
-.row.dirty::before { content: ""; position: absolute; left: -1px; top: 6px; bottom: 6px; width: 3px; border-radius: 0 3px 3px 0; background: var(--0xtagger-accent); }
+/* Unsaved: tinted and outlined in the accent. Saved lines are plain. */
+.row.dirty { background: var(--0xtagger-accent-soft); border-style: solid; border-color: color-mix(in srgb, var(--0xtagger-accent) 35%, transparent); }
 .grip { display: flex; flex: none; margin: 0 1px 0 -5px; padding: 4px 2px; color: var(--0xtagger-muted); opacity: .45; cursor: grab; touch-action: none; }
 .grip:hover { opacity: 1; }
 .grip svg { width: 8px; height: 12px; }
 .row.dragging { opacity: .5; }
 .lines.ranked .row.fresh { padding-left: 21px; }
 .row.removed input { color: var(--0xtagger-muted); text-decoration: line-through; }
-.remove { display: flex; align-items: center; justify-content: center; flex: none; width: 22px; height: 22px; padding: 5px; color: var(--0xtagger-muted); opacity: 0; transition: opacity 120ms ease; }
-.remove svg { width: 12px; height: 12px; }
-.row:is(:hover,:focus-within,.removed) .remove { opacity: 1; }
+/* Remove sits on the line's corner, out of the field, and only on hover. */
+.remove { position: absolute; top: -6px; right: -6px; z-index: 1; display: flex; align-items: center; justify-content: center; width: 17px; height: 17px; padding: 3px; border: 1px solid var(--0xtagger-line); border-radius: 50%; color: var(--0xtagger-muted); background: var(--0xtagger-panel); box-shadow: 0 1px 3px -1px rgba(0,0,0,.25); opacity: 0; transition: opacity 120ms ease; }
+.remove:hover { color: var(--0xtagger-ink); background: var(--0xtagger-panel); }
+.remove svg { width: 9px; height: 9px; }
+.row:hover .remove,.remove:focus-visible,.row.removed .remove { opacity: 1; }
+.remove:disabled { opacity: 0; }
+/* A new tag is one small "+" away, under the list. */
+.add { display: flex; align-items: center; justify-content: center; width: 22px; height: 18px; margin: 3px 0 0 6px; padding: 3px; color: var(--0xtagger-muted); }
+.add:hover { color: var(--0xtagger-accent); }
+.add svg { width: 12px; height: 12px; }
 /* Which network the tag is for, and the way to change it. */
 .network { display: flex; flex: none; align-items: center; gap: 4px; height: 24px; padding: 0 5px 0 4px; border-radius: 6px; color: var(--0xtagger-muted); background: var(--0xtagger-soft); font: 650 10.5px/1 system-ui, sans-serif; letter-spacing: .02em; white-space: nowrap; }
 .row:not(.dirty,.fresh) .network { background: transparent; }
@@ -84,17 +90,15 @@ header .close { margin-left: auto; }
 .networks .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .networks .own { flex: none; width: 5px; height: 5px; border-radius: 50%; background: var(--0xtagger-accent); }
 .networks .symbol { color: var(--0xtagger-muted); font: 600 10px ui-monospace, monospace; }
-/* Save shows only on a line with something to save, filled and lit from
-   above: a soft sheen, a hairline of light on its top edge, and a shadow in
-   its own colour. A press settles it into the panel. */
-.save { display: flex; align-items: center; justify-content: center; flex: none; width: 26px; height: 26px; padding: 0; border-radius: 7px; color: var(--0xtagger-on-accent); background: var(--0xtagger-accent-fill) linear-gradient(to bottom, color-mix(in srgb, white 14%, transparent), transparent 60%); box-shadow: inset 0 1px 0 color-mix(in srgb, white 22%, transparent), 0 1px 2px var(--0xtagger-accent-pulse), 0 4px 10px -4px var(--0xtagger-accent-glow); transition: box-shadow 150ms ease, transform 100ms ease-out, filter 120ms ease; }
-.save svg { width: 14px; height: 14px; }
-.save:not(:disabled):hover,.save-all:not(:disabled):hover { filter: brightness(1.1); }
-.save:not(:disabled):active,.save-all:not(:disabled):active { transform: scale(.94); transition-duration: 60ms; }
-@media (prefers-reduced-motion: reduce) { .save,.save-all { transition: none; } .save:not(:disabled):active,.save-all:not(:disabled):active { transform: none; } }
+/* Enter saves. Where a button would be, a quiet return glyph says so while a
+   line has something to save, and turns into a green tick once it is saved. */
+.mark { display: none; flex: none; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; color: var(--0xtagger-accent); font: 700 13px/1 system-ui, sans-serif; opacity: .7; }
+.row.dirty .mark,.mark.confirmed { display: flex; }
+.mark.confirmed { color: white; background: var(--0xtagger-success-fill); opacity: 1; box-shadow: 0 1px 4px -1px var(--0xtagger-success-fill); }
+.mark svg { width: 12px; height: 12px; }
+.row.saved { background: color-mix(in srgb, var(--0xtagger-success-fill) 10%, transparent); transition: background 200ms ease; }
 .extras { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; }
 .extras:not(:has(> :not([hidden]))) { display: none; }
-.save-all { margin-left: auto; padding: 6px 11px; border-radius: 7px; font-size: 12px; background: var(--0xtagger-accent-fill) linear-gradient(to bottom, color-mix(in srgb, white 14%, transparent), transparent 60%); box-shadow: inset 0 1px 0 color-mix(in srgb, white 22%, transparent), 0 1px 2px var(--0xtagger-accent-pulse); transition: transform 100ms ease-out, filter 120ms ease; }
 .notice,.offer { font-size: 11px; margin: 8px 0 0; overflow-wrap: anywhere; }
 /* Whose words are in the field, said beside them and never saved with them.
    It shrinks before the tag does, so a long name scrolls rather than fighting
@@ -150,7 +154,6 @@ header .close { margin-left: auto; }
 @keyframes tagger-draw { from { stroke-dashoffset: 14.2; } to { stroke-dashoffset: 0; } }
 .confirmed svg path { animation: tagger-draw 240ms cubic-bezier(.2,.9,.3,1) both; }
 .quiet.confirmed { color: var(--0xtagger-accent); }
-.primary.confirmed { color: var(--0xtagger-success); }
 @media (prefers-reduced-motion: reduce) { .confirmed svg path { animation: none; } }
 
 /* A button held shut while it confirms is locked, not unavailable: fading it

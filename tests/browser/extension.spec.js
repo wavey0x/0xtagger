@@ -203,6 +203,8 @@ test('installed extension: a book that works with no setup, moving it to a serve
     await embedded.getByRole('textbox', { name: 'Tag 1' }).fill('Edited in embedded view');
     await embedded.getByRole('textbox', { name: 'Tag 1' }).press('Enter');
     await expect(website.locator('#wallet')).toHaveAttribute('data-0xtagger-tag', 'Edited in embedded view');
+    // The saved tick shows briefly before the editor closes.
+    await expect(embedded.getByRole('dialog')).toHaveCount(0);
     await embedded.getByRole('button', { name: 'Edit wallet tags', exact: true }).click();
     await embedded.getByRole('textbox', { name: 'Tag 1' }).fill('Local edited');
     await embedded.getByRole('textbox', { name: 'Tag 1' }).press('Enter');
@@ -284,13 +286,14 @@ test('installed extension: a book that works with no setup, moving it to a serve
     await book.getByRole('textbox',{name:'Tag 1'}).fill('New Base wallet');
     // Switching books under an open draft must not let it save into the new one.
     await switchTo('Remote');
-    await expect(book.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+    await expect(book.locator('.notice')).toContainText('You switched to');
     await expect(book.getByRole('textbox', { name: 'Tag 1' })).toHaveValue('New Base wallet');
     await switchTo('Local');
-    await expect(book.getByRole('button', { name: 'Save', exact: true })).toBeEnabled();
-    // A typed tag gets a new line under it for the next, and both save together.
+    await expect(book.locator('.notice')).toHaveText('');
+    // "+" adds a line under a typed tag, and Enter saves both together.
+    await book.getByRole('button',{name:'Add tag',exact:true}).click();
     await book.getByRole('textbox',{name:'Tag 2'}).fill('Second alias');
-    await book.getByRole('button',{name:'Save all 2',exact:true}).click();
+    await book.getByRole('textbox',{name:'Tag 2'}).press('Enter');
     await expect(book.getByRole('dialog')).toHaveCount(0);
     const addedRecord=(await (await api.get(local+'/tags')).json()).records.find(record=>record.address===added);
     expect(addedRecord).toMatchObject({address:added,scope:'eip155:8453',tags:['New Base wallet','Second alias']});
@@ -321,7 +324,9 @@ test('installed extension: a book that works with no setup, moving it to a serve
     await book.locator('.record').click();
     await book.getByRole('button', { name: 'Remove tags', exact: true }).click();
     expect((await (await api.get(local+'/tags')).json()).records).toContainEqual(addedRecord);
-    await book.getByRole('button', { name: 'Save all 2', exact: true }).click();
+    // Removing marks every line and leaves focus on the first one's undo; Enter saves.
+    await expect(book.locator('.remove').first()).toBeFocused();
+    await book.keyboard.press('Enter');
     await expect(book.getByRole('dialog')).toHaveCount(0);
     expect((await (await api.get(local+'/tags')).json()).records.some(record=>record.address===added)).toBe(false);
     await popup.getByRole('button', { name: 'Open address book', exact: false }).click();
@@ -464,7 +469,7 @@ test('popup finder searches, copies and adds an address in a chosen scope', asyn
     await expect(popup.locator('#home')).toBeHidden();
     await expect(popup.locator('#editor-host .save-scope').first()).toHaveText('Base');
     await popup.getByRole('textbox', { name: 'Tag 1' }).fill('Base payroll');
-    await popup.getByRole('button', { name: 'Save', exact: true }).click();
+    await popup.getByRole('textbox', { name: 'Tag 1' }).press('Enter');
     await expect(popup.locator('#home')).toBeVisible();
     await expect(popup.locator('#lookup-result .lookup-item')).toContainText('Base payroll');
 
@@ -528,7 +533,7 @@ test('popup finder searches, copies and adds an address in a chosen scope', asyn
     await popup.getByRole('button', { name: 'Add tags' }).click();
     await expect(popup.locator('#editor-host .save-scope').first()).toHaveText('Chain 42170');
     await popup.getByRole('textbox', { name: 'Tag 1' }).fill('Custom chain');
-    await popup.getByRole('button', { name: 'Save', exact: true }).click();
+    await popup.getByRole('textbox', { name: 'Tag 1' }).press('Enter');
     await expect(popup.locator('#lookup-result .lookup-item')).toContainText('Chain 42170');
 
     // "N more" is a way to the rest of these matches, not to the whole book.
