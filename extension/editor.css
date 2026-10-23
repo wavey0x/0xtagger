@@ -47,7 +47,7 @@ header .close { margin-left: auto; }
 .lines { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; margin-top: 8px; }
 .row { position: relative; display: flex; align-items: center; gap: 3px; min-width: 0; height: 36px; padding: 0 4px 0 10px; border: 1px solid transparent; border-radius: 8px; background: var(--0xtagger-soft); }
 .row:focus-within { border-color: var(--0xtagger-line); }
-.row input { flex: 1; min-width: 0; width: 0; color: var(--0xtagger-ink); background: transparent; border: 0; padding: 3px 0; font-size: 14px; line-height: 20px; font-weight: 650; }
+.row input { flex: 1; min-width: 0; width: 0; color: var(--0xtagger-ink); background: transparent; border: 0; padding: 3px 0; font-size: 14px; line-height: 20px; font-weight: 450; }
 .row input::placeholder { color: var(--0xtagger-muted); font-weight: 500; }
 .row input:focus-visible { outline: none; }
 .row input::-webkit-search-cancel-button { display: none; }
