@@ -294,6 +294,9 @@ test('installed extension: a book that works with no setup, moving it to a serve
     await book.getByRole('button',{name:'Add tag',exact:true}).click();
     await book.getByRole('textbox',{name:'Tag 2'}).fill('Second alias');
     await book.getByRole('textbox',{name:'Tag 2'}).press('Enter');
+    // Enter after "+" opens the next blank, and Enter on that blank closes.
+    await expect(book.getByRole('textbox',{name:'Tag 3'})).toBeFocused();
+    await book.getByRole('textbox',{name:'Tag 3'}).press('Enter');
     await expect(book.getByRole('dialog')).toHaveCount(0);
     const addedRecord=(await (await api.get(local+'/tags')).json()).records.find(record=>record.address===added);
     expect(addedRecord).toMatchObject({address:added,scope:'eip155:8453',tags:['New Base wallet','Second alias']});

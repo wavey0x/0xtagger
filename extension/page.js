@@ -483,7 +483,7 @@ export async function createPageController({
     // showing it on: a contract's label on one chain says nothing about the
     // address on another. A name typed by hand keeps the scope it always had.
     const scope = recordFor(target)?.scope || (suggestion && target.network) || 'global';
-    editor = createEditor(overlay.box, { address: target.address, scope, state, save,
+    editor = createEditor(overlay.box, { address: target.address, scope, newScope: 'global', state, save,
       suggestion,
       visibility,
       toggleVisibility: () => {

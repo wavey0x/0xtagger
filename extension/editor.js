@@ -42,7 +42,7 @@ const REFUSED_STILL = [
 // Every tag is a line of its own with the network it is for. The book keeps one
 // list per network, so a line's network says which list its tag is in, and
 // saving a line rewrites that list (and the one it left, when it moved).
-export function createEditor(container, { address, scope: opened = 'global', state, save, close, onLayout = () => {}, visibility, toggleVisibility, suggestion = null, modal = false }) {
+export function createEditor(container, { address, scope: opened = 'global', state, save, close, onLayout = () => {}, visibility, toggleVisibility, suggestion = null, modal = false, newScope = opened }) {
   const book = state.activeBook;
   // Which book a save goes to only matters once there is more than one.
   const bookName = state.books.length > 1 ? state.bookName : '';
@@ -75,8 +75,11 @@ export function createEditor(container, { address, scope: opened = 'global', sta
   const offered = suggestion?.name && usableName(suggestion.name) ? suggestion : null;
   const prefill = offered && !lines.length ? offered : null;
   // The last line is always there for a new tag, and saves like any other.
-  const blank = (tag = '') => ({ tag, scope: opened, saved: null, removed: false, moved: false });
-  let fresh = blank(prefill ? prefill.name : '');
+  // A tag typed by hand is for the network the caller names: on a website
+  // that is all of them, since most addresses are the same contract
+  // everywhere. A name the website itself shows is for the website's network.
+  const blank = (tag = '', scope = newScope) => ({ tag, scope, saved: null, removed: false, moved: false });
+  let fresh = prefill ? blank(prefill.name, opened) : blank();
   // The new line shows only when it is needed: for an address with no tags,
   // or once "+" is pressed. Otherwise the list is just the tags.
   let adding = false;
@@ -252,7 +255,7 @@ export function createEditor(container, { address, scope: opened = 'global', sta
     get('.offer').replaceChildren();
     if (spare) {
       const button = element('button', 'Add tag', { type: 'button', class: 'quiet' });
-      button.onclick = () => { fresh.tag = offered.name; adding = true; renderLines(null); rowOf(fresh)?.querySelector('input').focus(); };
+      button.onclick = () => { fresh.tag = offered.name; fresh.scope = opened; adding = true; renderLines(null); rowOf(fresh)?.querySelector('input').focus(); };
       get('.offer').append(element('span', offered.name), button);
     }
   }
@@ -274,6 +277,7 @@ export function createEditor(container, { address, scope: opened = 'global', sta
     row.querySelector('.symbol').textContent = scopeSymbol(item.scope);
     row.querySelector('.save-scope').textContent = scopeName(item.scope);
     row.querySelector('.network').title = `Network: ${scopeName(item.scope)}`;
+    row.querySelector('.network').classList.toggle('everywhere', item.scope === 'global');
     const remove = row.querySelector('.remove');
     if (remove) {
       const index = all().indexOf(item) + 1;
@@ -437,7 +441,7 @@ export function createEditor(container, { address, scope: opened = 'global', sta
     adding = false;
   }
   let retry = null;
-  async function commit(chosen) {
+  async function commit(chosen, { next = false } = {}) {
     if (closed || phase !== 'idle' || activeState.activeBook !== book || !chosen.length) return;
     let writes;
     try { writes = plan(chosen).map(entry => ({ ...entry, tags: normalizeTags(entry.tags) })); }
@@ -477,10 +481,15 @@ export function createEditor(container, { address, scope: opened = 'global', sta
         ], { duration: 320, easing: 'cubic-bezier(.2,.9,.3,1)' }).finished.catch(() => {});
       }));
       if (!still) await new Promise(resolve => setTimeout(resolve, 140));
-      // Nothing left to save closes the editor; anything still waiting keeps it open.
-      if (!all().some(pending)) { finish(); return; }
+      // A tag added with "+" and saved with Enter opens the next blank line, on
+      // the same network, so several can be added in a row; Enter on that
+      // blank closes.
+      // Otherwise nothing left to save closes the editor, and anything still
+      // waiting keeps it open.
+      if (next) { adding = true; fresh.scope = next; }
+      else if (!all().some(pending)) { finish(); return; }
       phase = 'idle';
-      renderLines(null);
+      renderLines(next ? lines.length : null);
       guard();
     } catch (error) {
       if (closed) return;
@@ -532,7 +541,9 @@ export function createEditor(container, { address, scope: opened = 'global', sta
     if (event.isTrusted && event.key === 'Enter' && event.target.matches('.row input, .remove') && !event.isComposing) {
       event.preventDefault(); event.stopPropagation();
       const waiting = all().filter(pending);
-      if (waiting.length) commit(waiting);
+      // After "+", Enter keeps adding; naming a new address is usually one tag.
+      const more = adding && event.target.closest('.row.fresh') && fresh.tag.trim() ? fresh.scope : false;
+      if (waiting.length) commit(waiting, { next: more });
       else finish();
     }
   });

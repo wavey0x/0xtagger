@@ -100,6 +100,20 @@ test('dragging a tag by its handle reorders its network, waiting for Save', asyn
   expect(await page.evaluate(() => window.saves)).toEqual([expect.objectContaining({ scope: 'global', tags: ['Operations', 'Treasury'], version: 'one' })]);
 });
 
+test('after "+", Enter saves the new tag and opens the next blank; Enter on that blank closes', async ({ page }) => {
+  await start(page);
+  await edit(page).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('button', { name: 'Add tag', exact: true }).click();
+  await expect(dialog.locator('.row.fresh .save-scope')).toHaveText('All networks');
+  await dialog.locator('.row.fresh input').fill('Third');
+  await dialog.locator('.row.fresh input').press('Enter');
+  await expect(page.getByRole('textbox', { name: 'Tag 4', exact: true })).toBeFocused();
+  expect(await page.evaluate(() => window.saves)).toEqual([expect.objectContaining({ scope: 'global', tags: ['Treasury', 'Operations', 'Third'] })]);
+  await page.getByRole('textbox', { name: 'Tag 4', exact: true }).press('Enter');
+  await expect(dialog).toHaveCount(0);
+});
+
 test('a pending save sends one write and its late completion cannot close a newer draft', async ({ page }) => {
   await start(page);
   await edit(page).click();
