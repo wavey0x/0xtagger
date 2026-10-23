@@ -10,7 +10,7 @@ button:focus-visible,input:focus-visible { outline: 2px solid var(--0xtagger-acc
 .quiet:hover { background: var(--0xtagger-soft); color: var(--0xtagger-ink); }
 .primary { background: var(--0xtagger-accent-fill); color: var(--0xtagger-on-accent); }
 .editor { color: var(--0xtagger-ink); width: 300px; max-width: calc(100vw - 20px); max-height: calc(100vh - 20px); overflow: auto; padding: 10px; border: 1px solid var(--0xtagger-line); border-radius: 12px; background: linear-gradient(145deg, var(--0xtagger-sheen), transparent 45%), var(--0xtagger-glass); backdrop-filter: blur(6px); box-shadow: inset 0 1px 0 var(--0xtagger-inset), var(--0xtagger-shadow); }
-header,footer { display: flex; align-items: center; gap: 4px; }
+header { display: flex; align-items: center; gap: 4px; }
 .brand { display: flex; flex: none; margin-right: 2px; }
 /* The mark catches the light from its top corner and hangs from its point:
    a hover swings it a few degrees, as a tag would on its string. */
@@ -43,56 +43,59 @@ dialog.editor::backdrop { background: var(--0xtagger-backdrop); backdrop-filter:
 .source:empty { display: none; }
 header .close { margin-left: auto; }
 [hidden] { display: none !important; }
-.rows { display: grid; gap: 4px; margin-top: 8px; }
-.rows:empty { margin: 0; }
-.row { display: flex; align-items: center; min-height: 32px; gap: 4px; background: var(--0xtagger-soft); border: 1px solid transparent; border-radius: 7px; padding: 2px 3px 2px 8px; }
-.row:focus-within { border-color: var(--0xtagger-accent); background: transparent; }
-.row.dragging { opacity: .5; }
-.row input { flex: 1; min-width: 0; width: 0; color: var(--0xtagger-ink); background: transparent; border: 0; border-radius: 4px; padding: 3px 0; font-size: 13.5px; line-height: 20px; font-weight: 650; }
+/* One field holds the tag a page shows, the network it is for, and Save. */
+.main { display: flex; align-items: center; gap: 3px; height: 38px; margin-top: 8px; padding: 0 4px 0 9px; border: 1px solid transparent; border-radius: 9px; background: var(--0xtagger-soft); }
+.main:focus-within { border-color: var(--0xtagger-accent); background: transparent; }
+.lead { display: flex; flex: 1; min-width: 0; }
+.row { display: flex; flex: 1; align-items: center; min-width: 0; gap: 3px; }
+.row input { flex: 1; min-width: 0; width: 0; color: var(--0xtagger-ink); background: transparent; border: 0; padding: 3px 0; font-size: 14.5px; line-height: 20px; font-weight: 700; }
+.row input::placeholder { color: var(--0xtagger-muted); font-weight: 500; }
 .row input:focus-visible { outline: none; }
 .row input::-webkit-search-cancel-button { display: none; }
-.grip { display: flex; flex: none; margin-left: -3px; color: var(--0xtagger-muted); opacity: .55; cursor: grab; }
-.grip:hover { opacity: 1; }
-.grip svg { width: 10px; height: 14px; }
-.row:only-child .grip { display: none; }
-.rank { display: flex; flex-shrink: 0; align-items: center; gap: 2px; }
+/* Other names: quieter lines under the field. */
+.rows { display: grid; gap: 0; margin-top: 2px; }
+.rows:empty { display: none; }
+.alias { height: 28px; padding: 0 4px 0 10px; border-radius: 7px; }
+.alias:focus-within { background: var(--0xtagger-soft); }
+.alias input { font-size: 12.5px; font-weight: 600; }
+.aka { flex: none; width: 26px; color: var(--0xtagger-muted); font-size: 9.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.rank { display: flex; flex-shrink: 0; align-items: center; gap: 1px; }
 .rank button { display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 5px; color: var(--0xtagger-muted); }
 .rank button svg { width: 12px; height: 12px; }
-.row:only-child:has(input:placeholder-shown) .rank { display: none; }
-.default { color: var(--0xtagger-accent); font-size: 9.5px; font-weight: 750; letter-spacing: .04em; text-transform: uppercase; margin-right: 2px; }
-.add { display: flex; align-items: center; justify-content: center; gap: 5px; width: 100%; height: 28px; margin-top: 4px; padding: 0 8px; border: 1px dashed var(--0xtagger-line); border-radius: 7px; color: var(--0xtagger-muted); font-size: 12px; font-weight: 600; }
+/* Row controls stay out of the way until the row is pointed at or in use. */
+.rank { opacity: 0; transition: opacity 120ms ease; }
+.row:is(:hover,:focus-within) .rank { opacity: 1; }
+.lead .row:has(input:placeholder-shown) .rank { display: none; }
+.add { display: flex; align-items: center; justify-content: center; flex: none; width: 24px; height: 24px; padding: 6px; color: var(--0xtagger-muted); }
 .add svg { width: 12px; height: 12px; }
-.add:hover { color: var(--0xtagger-ink); border-color: transparent; }
-.rows:empty + .add { margin-top: 8px; }
-/* Which network a save is for, and the way to change it. */
-.network { display: flex; align-items: center; gap: 6px; height: 28px; max-width: 170px; padding: 0 8px 0 9px; border: 1px solid var(--0xtagger-line); border-radius: 7px; color: var(--0xtagger-ink); background: transparent; font-size: 12px; font-weight: 600; white-space: nowrap; }
-.network:hover,.network[aria-expanded="true"] { background: var(--0xtagger-soft); }
-.network > svg { flex: none; width: 10px; height: 10px; color: var(--0xtagger-muted); }
-.scope { display: flex; min-width: 0; margin-right: auto; }
+/* Which network the list is for, and the way to change it. */
+.scope { display: flex; flex: none; }
+.network { display: flex; align-items: center; gap: 4px; height: 24px; padding: 0 5px 0 4px; border-radius: 6px; color: var(--0xtagger-muted); background: var(--0xtagger-soft); font: 650 10.5px/1 system-ui, sans-serif; letter-spacing: .02em; white-space: nowrap; }
+.network:hover,.network[aria-expanded="true"] { color: var(--0xtagger-ink); }
+.network > svg { flex: none; width: 8px; height: 8px; opacity: .7; }
 .network-mark { display: flex; flex: none; }
-.save-scope { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.save-scope { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .network-mark svg,.networks [role="option"] > svg:first-child { display: block; width: 14px; height: 14px; color: var(--0xtagger-muted); }
 .dot { display: block; flex: none; width: 9px; height: 9px; margin: 2px; border-radius: 50%; background: var(--0xtagger-muted); }
-.networks { position: fixed; inset: auto; margin: 0; width: 248px; max-height: min(320px, calc(100vh - 16px)); overflow: hidden auto; padding: 4px; color: var(--0xtagger-ink); background: var(--0xtagger-panel); border: 1px solid var(--0xtagger-line); border-radius: 10px; box-shadow: var(--0xtagger-shadow); font: 12.5px/1.2 system-ui, sans-serif; }
+.networks { position: fixed; inset: auto; margin: 0; width: 184px; max-height: min(320px, calc(100vh - 16px)); overflow: hidden auto; padding: 4px; color: var(--0xtagger-ink); background: var(--0xtagger-panel); border: 1px solid var(--0xtagger-line); border-radius: 10px; box-shadow: var(--0xtagger-shadow); font: 12.5px/1.2 system-ui, sans-serif; }
 .networks:popover-open { display: grid; }
-.networks [role="option"] { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px; color: inherit; background: transparent; font-weight: 500; text-align: left; white-space: nowrap; }
+.networks [role="option"] { display: flex; align-items: center; gap: 8px; min-width: 0; height: 27px; padding: 0 7px; color: inherit; background: transparent; font-weight: 500; text-align: left; white-space: nowrap; }
+.networks [role="option"]:first-child { margin-bottom: 4px; }
 .networks [role="option"]:is(:hover,:focus-visible) { background: var(--0xtagger-soft); outline: none; }
 .networks [aria-selected="true"] { background: var(--0xtagger-accent-soft); font-weight: 650; }
-.networks-note + [role="option"] { margin-bottom: 4px; }
-.networks [role="option"] { min-width: 0; }
-.networks .name { flex: 1 0 auto; }
-.networks-note { margin: 2px 4px 6px; padding: 4px 4px 8px; border-bottom: 1px solid var(--0xtagger-line); color: var(--0xtagger-muted); font-size: 11px; line-height: 1.35; white-space: normal; }
-.networks .named { flex: 0 1 auto; min-width: 0; max-width: 96px; overflow: hidden; text-overflow: ellipsis; color: var(--0xtagger-muted); font-size: 11px; font-weight: 500; }
-.networks [aria-selected="true"] > svg:last-child { flex: none; width: 13px; height: 13px; color: var(--0xtagger-accent); }
-.save { display: flex; align-items: center; justify-content: center; flex: 0 0 64px; min-height: 28px; padding: 6px 8px; border-radius: 7px; font-size: 12.5px; font-weight: 650; white-space: nowrap; }
+.networks .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.networks .own { flex: none; width: 5px; height: 5px; border-radius: 50%; background: var(--0xtagger-accent); }
+.networks .symbol { color: var(--0xtagger-muted); font: 600 10px ui-monospace, monospace; }
+/* Save waits quietly until there is something to save, then lights up. */
+.save { display: flex; align-items: center; justify-content: center; flex: none; width: 28px; height: 28px; padding: 0; border: 1px solid var(--0xtagger-line); border-radius: 7px; color: var(--0xtagger-muted); background: transparent; transition: box-shadow 150ms ease, transform 100ms ease-out, filter 120ms ease; }
+.save svg { width: 14px; height: 14px; }
 /* Lit from above: a soft sheen on the fill, a hairline of light on its top
    edge, and a shadow in its own colour. A press settles it into the panel. */
-.save { background-image: linear-gradient(to bottom, color-mix(in srgb, white 14%, transparent), transparent 60%); box-shadow: inset 0 1px 0 color-mix(in srgb, white 22%, transparent), 0 1px 2px var(--0xtagger-accent-pulse), 0 4px 10px -4px var(--0xtagger-accent-glow); letter-spacing: .01em; transition: filter 120ms ease, transform 100ms ease-out, box-shadow 120ms ease; }
+.save:is(.live,.confirmed) { border-color: transparent; color: var(--0xtagger-on-accent); background: var(--0xtagger-accent-fill) linear-gradient(to bottom, color-mix(in srgb, white 14%, transparent), transparent 60%); box-shadow: inset 0 1px 0 color-mix(in srgb, white 22%, transparent), 0 1px 2px var(--0xtagger-accent-pulse), 0 4px 10px -4px var(--0xtagger-accent-glow); }
 .save:not(:disabled):hover { filter: brightness(1.1); }
-.save:not(:disabled):active { transform: translateY(.5px) scale(.97); box-shadow: inset 0 1px 0 color-mix(in srgb, white 12%, transparent), 0 0 1px var(--0xtagger-accent-pulse); transition-duration: 60ms; }
+.save:not(:disabled):active { transform: scale(.92); transition-duration: 60ms; }
 @media (prefers-reduced-motion: reduce) { .save { transition: none; } .save:not(:disabled):active { transform: none; } }
-.save svg { width: 16px; height: 16px; }
-.save[aria-label="Saved"] { background: var(--0xtagger-accent-soft); opacity: 1; }
+.extras { display: flex; margin-top: 6px; }
 .preview,.notice,.offer { font-size: 11px; margin: 8px 0 0; overflow-wrap: anywhere; }
 .preview { color: var(--0xtagger-muted); }
 /* Whose words are in the field, said beside them and never saved with them.
@@ -109,7 +112,6 @@ header .close { margin-left: auto; }
 .conflict p { margin: 0 0 5px; }
 .conflict button { padding: 4px 0; font-size: 11px; color: var(--0xtagger-accent); }
 .conflict button + button { margin-left: 14px; }
-footer { margin-top: 8px; }
 /* The tag itself catches the light; the button adds no plate or border. */
 .inline-tag { display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 3px; color: var(--0xtagger-accent); background: transparent; transition: color 150ms ease; }
 .inline-tag svg { width: 14px; height: 14px; pointer-events: none; transform-origin: center; transition: transform 100ms ease-out, filter 150ms ease; }

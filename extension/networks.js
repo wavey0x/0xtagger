@@ -1,16 +1,17 @@
 // Exact explorer hosts and chain IDs. The Etherscan group uses one page layout;
 // other explorers can share a chain registry without being claimed by it.
 // The quick choices stay small; every other chain can still be entered by ID.
+// A quick choice's symbol is what the editor's network chip shows.
 // Source: api.etherscan.io/v2/chainlist, checked 2026-10-22; Blastscan's
 // live mainnet and Sepolia pages use the same layout but are absent there.
 const etherscanNetworks = [
-  { chain: '1', name: 'Ethereum', explorer: 'etherscan.io', safe: ['eth'], quick: true },
-  { chain: '11155111', name: 'Sepolia', explorer: 'sepolia.etherscan.io', safe: ['sep'], quick: true },
-  { chain: '8453', name: 'Base', explorer: 'basescan.org', safe: ['base'], quick: true },
-  { chain: '42161', name: 'Arbitrum', explorer: 'arbiscan.io', safe: ['arb1', 'arb'], quick: true },
-  { chain: '10', name: 'Optimism', explorer: 'optimistic.etherscan.io', safe: ['oeth', 'op'], quick: true },
-  { chain: '56', name: 'BNB Chain', explorer: 'bscscan.com', safe: ['bnb'], quick: true },
-  { chain: '137', name: 'Polygon', explorer: 'polygonscan.com', safe: ['matic', 'polygon'], quick: true },
+  { chain: '1', name: 'Ethereum', explorer: 'etherscan.io', safe: ['eth'], quick: true, symbol: 'ETH' },
+  { chain: '11155111', name: 'Sepolia', explorer: 'sepolia.etherscan.io', safe: ['sep'], quick: true, symbol: 'SEP' },
+  { chain: '8453', name: 'Base', explorer: 'basescan.org', safe: ['base'], quick: true, symbol: 'BASE' },
+  { chain: '42161', name: 'Arbitrum', explorer: 'arbiscan.io', safe: ['arb1', 'arb'], quick: true, symbol: 'ARB' },
+  { chain: '10', name: 'Optimism', explorer: 'optimistic.etherscan.io', safe: ['oeth', 'op'], quick: true, symbol: 'OP' },
+  { chain: '56', name: 'BNB Chain', explorer: 'bscscan.com', safe: ['bnb'], quick: true, symbol: 'BNB' },
+  { chain: '137', name: 'Polygon', explorer: 'polygonscan.com', safe: ['matic', 'polygon'], quick: true, symbol: 'POL' },
   { chain: '560048', name: 'Hoodi', explorer: 'hoodi.etherscan.io' },
   { chain: '97', name: 'BNB Testnet', explorer: 'testnet.bscscan.com' },
   { chain: '80002', name: 'Polygon Amoy', explorer: 'amoy.polygonscan.com' },
@@ -65,7 +66,7 @@ const etherscanNetworks = [
 ];
 
 const otherNetworks = [
-  { chain: '100', name: 'Gnosis', explorer: 'gnosisscan.io', safe: ['gno'], quick: true },
+  { chain: '100', name: 'Gnosis', explorer: 'gnosisscan.io', safe: ['gno'], quick: true, symbol: 'GNO' },
 ];
 
 export const networks = [...etherscanNetworks, ...otherNetworks];
@@ -86,4 +87,11 @@ export function scopeName(scope) {
   if (scope === 'global') return 'All networks';
   const chain = String(scope).slice(7);
   return byChain.get(chain)?.name || `Chain ${chain}`;
+}
+
+// The short form on the editor's network chip; any other chain shows its ID.
+export function scopeSymbol(scope) {
+  if (scope === 'global') return 'ALL';
+  const chain = String(scope).slice(7);
+  return byChain.get(chain)?.symbol || chain;
 }

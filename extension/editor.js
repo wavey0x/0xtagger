@@ -1,8 +1,8 @@
 import { findRecord, MAX_TAGS, MAX_TAG_LENGTH, normalizeTags, sameTags, sourceName, usableName } from './shared.js';
 import { checksumAddress } from './checksum.js';
 import { chainLogos } from './vendor/chain-logos.js';
-import { quickNetworks, scopeName } from './networks.js';
-import { EDITOR_MARK, COPY_ICON, COPIED_ICON, EYE_ICON, EYE_OFF_ICON, GLOBE_ICON, CHEVRON_ICON, CHECK_ICON, PLUS_ICON, CLOSE_ICON, GRIP_ICON, confirmCopied } from './icons.js';
+import { quickNetworks, scopeName, scopeSymbol } from './networks.js';
+import { EDITOR_MARK, COPY_ICON, COPIED_ICON, EYE_ICON, EYE_OFF_ICON, GLOBE_ICON, CHEVRON_ICON, CHECK_ICON, PLUS_ICON, CLOSE_ICON, STAR_ICON, confirmCopied } from './icons.js';
 
 const element = (tag, text, attrs = {}) => {
   const node = document.createElement(tag);
@@ -80,9 +80,9 @@ export function createEditor(container, { address, scope: opened = 'global', sta
 
   const panel = element(modal ? 'dialog' : 'section', undefined, { class: 'editor', role: 'dialog', 'aria-label': 'Edit wallet tags' });
   panel.innerHTML = `<header><span class="brand" role="img" aria-label="0xtagger">${EDITOR_MARK}<svg class="sheen" aria-hidden="true"><linearGradient id="brand-sheen" x1="0" y1="0" x2="1" y2="1"><stop offset="0"/><stop offset="1"/></linearGradient></svg></span><code></code><button type="button" class="quiet copy" aria-label="Copy">${COPY_ICON}</button><span class="source"></span>${visibility ? '<div class="visibility-group"><button type="button" class="quiet visibility" role="switch" aria-label="Show my tags for this address" aria-checked="true"></button></div>' : `<button type="button" class="quiet close" aria-label="Close editor" title="Close">${CLOSE_ICON}</button>`}</header>
-    <div class="rows"></div><button type="button" class="quiet add" aria-label="Add tag" title="Add tag">${PLUS_ICON}Add tag</button>
-    <p class="preview"></p><p class="offer" hidden></p><p class="notice" role="status"></p><div class="conflict" hidden></div>
-    <footer><div class="scope"><button type="button" class="network" aria-haspopup="listbox" aria-expanded="false"><span class="network-mark"></span><span class="save-scope" id="save-scope"></span>${CHEVRON_ICON}</button><div class="networks" role="listbox" aria-label="Save for" popover="manual"></div></div>${modal && own ? '<button type="button" class="quiet clear">Remove tags</button>' : ''}<button type="button" class="primary save" aria-describedby="save-scope">Save</button></footer>`;
+    <div class="main"><div class="lead"></div><button type="button" class="quiet add" aria-label="Add tag" title="Add another tag">${PLUS_ICON}</button><div class="scope"><button type="button" class="network" aria-haspopup="listbox" aria-expanded="false"><span class="network-mark"></span><span class="symbol" aria-hidden="true"></span><span class="save-scope" id="save-scope"></span>${CHEVRON_ICON}</button><div class="networks" role="listbox" aria-label="Save for" popover="manual"></div></div><button type="button" class="primary save" aria-label="Save" aria-describedby="save-scope">${CHECK_ICON}</button></div>
+    <div class="rows"></div>
+    <p class="preview"></p><p class="offer" hidden></p><p class="notice" role="status"></p><div class="conflict" hidden></div>${modal && own ? '<div class="extras"><button type="button" class="quiet clear">Remove tags</button></div>' : ''}`;
   container.replaceChildren(panel);
   if (modal) panel.showModal();
   const get = selector => panel.querySelector(selector);
@@ -147,6 +147,7 @@ export function createEditor(container, { address, scope: opened = 'global', sta
   const networkMark = choice => (choice === 'global' ? GLOBE_ICON : chainLogos[choice.slice(7)] || '<i class="dot"></i>');
   function showScope() {
     get('.network-mark').innerHTML = networkMark(scope);
+    get('.symbol').textContent = scopeSymbol(scope);
     get('.save-scope').textContent = scopeName(scope);
     get('.network').title = `Tags for ${scopeName(scope)}`;
   }
@@ -160,18 +161,15 @@ export function createEditor(container, { address, scope: opened = 'global', sta
   function openMenu() {
     const choices = ['global', ...quickNetworks.map(network => `eip155:${network.chain}`)];
     if (!choices.includes(scope)) choices.push(scope);
-    // Each network keeps its own list for an address; a page shows that list
-    // first and falls back to the one for all networks.
-    const note = element('p', 'Each network can have its own tags. Pages use them first, then All networks.', { class: 'networks-note' });
-    menu.replaceChildren(note, ...choices.map(choice => {
+    menu.replaceChildren(...choices.map(choice => {
       const option = element('button', undefined, { type: 'button', role: 'option', 'aria-selected': String(choice === scope), 'data-scope': choice, tabindex: '-1' });
       // A network with its own name for this address says so, which is the
       // only way to see an override without opening the book.
-      const named = findRecord(activeState.records, address, choice)?.tags.join(', ');
+      const named = choice !== 'global' && findRecord(activeState.records, address, choice)?.tags.join(', ');
       option.innerHTML = networkMark(choice);
       option.append(element('span', scopeName(choice), { class: 'name' }));
-      if (named) option.append(element('span', named, { class: 'named' }));
-      if (choice === scope) option.insertAdjacentHTML('beforeend', CHECK_ICON);
+      if (named) { option.append(element('i', undefined, { class: 'own' })); option.title = named; }
+      option.append(element('span', scopeSymbol(choice), { class: 'symbol' }));
       option.onclick = () => { closeMenu(); chooseScope(choice); get('.network').focus(); };
       return option;
     }));
@@ -251,7 +249,7 @@ export function createEditor(container, { address, scope: opened = 'global', sta
     }
   }
   function preview() {
-    const fallback = !draft.tags.length && scope !== 'global'
+    const fallback = !written().length && scope !== 'global'
       ? findRecord(activeState.records, address, 'global')?.tags[0] : null;
     get('.preview').hidden = !fallback;
     get('.preview').textContent = fallback ? `Removing this override will show ${fallback}.` : '';
@@ -273,31 +271,36 @@ export function createEditor(container, { address, scope: opened = 'global', sta
       get('.save').setAttribute('aria-label', 'Saved');
       get('.save').title = 'Saved';
     } else {
+      if (get('.save').classList.contains('confirmed') || !get('.save').firstElementChild) get('.save').innerHTML = CHECK_ICON;
       get('.save').classList.remove('confirmed');
-      get('.save').textContent = busy ? 'Saving…' : 'Save';
-      get('.save').removeAttribute('aria-label');
+      get('.save').setAttribute('aria-label', busy ? 'Saving…' : 'Save');
       get('.save').title = bookName ? `Save to ${bookName}` : 'Save';
     }
+    updateLive();
     panel.querySelectorAll('input').forEach(input => { input.disabled = busy; });
     const rows = panel.querySelectorAll('.row');
     rows.forEach(row => { row.querySelector('[aria-label^="Remove"]').disabled = busy; });
     get('.network').disabled = busy;
     get('.add').disabled = busy || rows.length >= MAX_TAGS;
-    if (get('.clear')) get('.clear').disabled = busy || !draft.tags.length;
+    if (get('.clear')) get('.clear').disabled = busy || !written().length;
   }
+  // Save lights up once there is something to save. It still works when it is
+  // dim: pressing it then only closes the editor.
+  function updateLive() { get('.save').classList.toggle('live', edited() || untouched()); }
+  // The first tag is the one a page shows, so it gets the field beside the
+  // network and Save. Any others are quieter lines under it.
   function renderRows(focus = 0) {
+    if (!draft.tags.length) draft.tags.push('');
     const rows = get('.rows');
-    rows.replaceChildren();
-    draft.tags.forEach((tag, index) => {
-      const row = element('div', undefined, { class: 'row' });
+    const made = draft.tags.map((tag, index) => {
+      const row = element('div', undefined, { class: index ? 'row alias' : 'row' });
       // Search inputs are excluded by Bitwarden even when ignore hints are disabled.
       // Keep the accessible role a textbox: this edits a tag, not a search query.
-      const input = element('input', undefined, { type: 'search', role: 'textbox', name: `0xtagger-tag-${index + 1}`, maxlength: MAX_TAG_LENGTH, 'aria-label': `Tag ${index + 1}`, placeholder: 'Add a tag', autocomplete: 'off', 'data-bwignore': 'true', spellcheck: 'false' });
+      const input = element('input', undefined, { type: 'search', role: 'textbox', name: `0xtagger-tag-${index + 1}`, maxlength: MAX_TAG_LENGTH, 'aria-label': `Tag ${index + 1}`, placeholder: index ? 'Another name' : 'Name this address', autocomplete: 'off', 'data-bwignore': 'true', spellcheck: 'false' });
       input.value = tag;
       // Typing changes no panel geometry; avoid positioning/layout work per letter.
-      input.oninput = () => { draft.tags[index] = input.value; if (index === 0) attribution(); };
-      // Order is set by dragging a row by its handle, or with Alt and an arrow
-      // from the keyboard. The first tag is the one a page shows.
+      input.oninput = () => { draft.tags[index] = input.value; if (index === 0) attribution(); updateLive(); };
+      // Alt and an arrow moves a tag; the first is the one a page shows.
       const move = to => {
         if (to < 0 || to >= draft.tags.length || to === index) return;
         draft.tags.splice(to, 0, ...draft.tags.splice(index, 1));
@@ -308,42 +311,28 @@ export function createEditor(container, { address, scope: opened = 'global', sta
         const step = event.altKey && { ArrowUp: -1, ArrowDown: 1 }[event.key];
         if (step && phase === 'idle') { event.preventDefault(); move(index + step); }
       });
-      const grip = element('span', undefined, { class: 'grip', title: 'Drag to reorder', 'aria-hidden': 'true' });
-      grip.innerHTML = GRIP_ICON;
-      // Only the handle starts a drag, so selecting text in the field still works.
-      grip.onpointerdown = () => { if (phase === 'idle') row.draggable = true; };
-      grip.onpointerup = () => { row.draggable = false; };
-      // A drag moves the rows themselves; the order is read back from them once
-      // it is let go, so nothing is held against a row that has moved.
-      row.addEventListener('dragstart', event => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', ''); row.classList.add('dragging'); });
-      row.addEventListener('dragend', () => {
-        row.draggable = false;
-        const order = [...rows.querySelectorAll('.row input')];
-        draft.tags = order.map(field => field.value);
-        renderRows(order.indexOf(input));
-      });
-      row.addEventListener('dragover', event => {
-        const held = rows.querySelector('.dragging');
-        if (!held) return;
-        event.preventDefault();
-        if (held === row) return;
-        const after = [...rows.children].indexOf(held) < [...rows.children].indexOf(row);
-        rows.insertBefore(held, after ? row.nextSibling : row);
-      });
       const controls = element('div', undefined, { class: 'rank' });
-      if (index === 0 && draft.tags.length > 1) controls.append(element('small', 'Default', { class: 'default' }));
+      if (index) {
+        row.append(element('span', 'aka', { class: 'aka', 'aria-hidden': 'true' }));
+        const lead = element('button', undefined, { type: 'button', class: 'quiet', 'aria-label': `Make tag ${index + 1} the default`, title: 'Show this one first' });
+        lead.innerHTML = STAR_ICON;
+        lead.onclick = () => move(0);
+        controls.append(lead);
+      }
       const remove = element('button', undefined, { type: 'button', class: 'quiet', 'aria-label': `Remove tag ${index + 1}`, title: 'Remove tag' });
       remove.innerHTML = CLOSE_ICON;
-      remove.onclick = () => { draft.tags.splice(index, 1); renderRows(Math.min(index, draft.tags.length - 1)); };
+      remove.onclick = () => { draft.tags.splice(index, 1); renderRows(Math.min(index, Math.max(draft.tags.length - 1, 0))); };
       controls.append(remove);
-      row.append(grip, input, controls);
-      rows.append(row);
+      row.append(input, controls);
+      return row;
     });
+    get('.lead').replaceChildren(made[0]);
+    rows.replaceChildren(...made.slice(1));
     updateControls();
     attribution();
     preview();
     if (focus === null) return;
-    const input = rows.querySelectorAll('input')[focus];
+    const input = panel.querySelectorAll('.row input')[focus];
     if (input) { input.focus(); input.select(); }
     else get('.add').focus();
   }
@@ -352,7 +341,7 @@ export function createEditor(container, { address, scope: opened = 'global', sta
   async function submit() {
     if (closed || phase !== 'idle' || activeState.activeBook !== book) return;
     let tags;
-    try { tags = normalizeTags(draft.tags); }
+    try { tags = normalizeTags(written()); }
     catch (error) { get('.notice').textContent = error.message; queueMicrotask(onLayout); return; }
     phase = 'saving';
     guard();

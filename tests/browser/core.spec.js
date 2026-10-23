@@ -54,7 +54,7 @@ test('the network menu edits one network\'s list and saves to it', async ({ page
   await edit(page).click();
   const menu = page.getByRole('listbox', { name: 'Save for' });
   await page.getByRole('dialog').locator('.network').click();
-  await expect(menu.getByRole('option', { name: /Base/ })).toContainText('Base vault');
+  await expect(menu.getByRole('option', { name: /Base/ })).toHaveAttribute('title', 'Base vault');
   await menu.getByRole('option', { name: /Base/ }).click();
   await expect(menu).toBeHidden();
   await expect(page.getByRole('dialog').locator('.save-scope')).toHaveText('Base');
@@ -545,6 +545,8 @@ const legible = async (page, surface) => {
   expect(contrast(painted, behind), `${surface}: tag on the page`).toBeGreaterThanOrEqual(4.5);
   expect(contrast(glyph, behind), `${surface}: tag button on the page`).toBeGreaterThanOrEqual(4.5);
   await edit(page).click();
+  // Save is filled once there is something to save.
+  await input(page).fill('Treasury rename');
   const primary = await save(page).evaluate(element => {
     const style = getComputedStyle(element);
     return { ink: style.color, fill: style.backgroundColor };
@@ -796,6 +798,8 @@ test('a filled control writes in white, on a purple dark enough to carry it', as
     await page.emulateMedia({ colorScheme: scheme });
     await start(page, { html: `<style>html{background:${surface}}</style>` + wallets });
     await tagFor(page, 'first').click();
+    // Save is filled once there is something to save.
+    await input(page).fill('Treasury rename');
     const button = page.getByRole('dialog').locator('.save');
     const [ink, fill] = await button.evaluate(node =>
       [getComputedStyle(node).color, getComputedStyle(node).backgroundColor]);
