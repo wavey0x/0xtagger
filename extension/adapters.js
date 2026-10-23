@@ -1,5 +1,5 @@
 import { parseAddress, query, usableName, UI } from './shared.js';
-import { explorerNetwork, safeNetwork, scopeOf } from './networks.js';
+import { etherscanNetwork, safeNetwork, scopeOf } from './networks.js';
 import { addressLink, addressText, collect } from './detect.js';
 
 // An adapter describes one website to the detection kernel:
@@ -100,9 +100,12 @@ const etherscanAdapter = site({
     if (element.matches(HOLDER_LINK)) return /0x[0-9a-f]/i.test(element.textContent) ? null : whole(element);
     return tokenName(element) || linkName(element);
   },
-  // The seen: pages above are Etherscan observations, not proof that every
-  // explorerNetwork host serves the same markup.
-  matches: url => Boolean(explorerNetwork(url.hostname)),
+  // The exact-host group excludes explorers with different frontends.
+  // seen: gnosisscan.io/address/0x000000000000000000000000000000000000dEaD
+  //       — open address page; it is now Blockscout — 2026-10-22.
+  // seen: blastscan.io/address/0x000000000000000000000000000000000000dEaD
+  //       — open address page; it keeps the Etherscan layout — 2026-10-22.
+  matches: url => Boolean(etherscanNetwork(url.hostname)),
   watch: ['data-highlight-value'],
   // The heading of an address page is what the page is about, and so is each
   // address a view function answers with. A name alone would take away the one
@@ -138,6 +141,7 @@ const etherscanAdapter = site({
       width: auto;
     }`,
   probe({ document, url, embedded }) {
+    const network = etherscanNetwork(url.hostname);
     if (document.querySelector('#challenge-running,#challenge-stage,[name="cf-turnstile-response"]') || /^(Just a moment|Attention Required)/i.test(document.title)) return { status: 'waiting' };
     if (document.readyState === 'loading') return { status: 'waiting' };
     const landmarks = document.querySelector('main') && document.querySelector('header,nav');
@@ -148,12 +152,12 @@ const etherscanAdapter = site({
     // they hold carries the same identities the page does.
     if (embedded && !landmarks) {
       return document.querySelector(`.table-responsive table tbody,${CONTRACT_READER}`)
-        ? { status: 'ready', network: scopeOf(explorerNetwork(url.hostname)) }
+        ? { status: 'ready', network: scopeOf(network) }
         : { status: 'stale', reason: 'embedded-view-unrecognized' };
     }
     if (!landmarks) return { status: 'stale', reason: 'explorer-landmarks-missing' };
     if (/^\/address\//.test(url.pathname) && !document.querySelector('#mainaddress')) return { status: 'stale', reason: 'main-address-missing' };
-    return { status: 'ready', network: scopeOf(explorerNetwork(url.hostname)) };
+    return { status: 'ready', network: scopeOf(network) };
   },
   rules: {
     // Includes homepage fee-recipient links, which have no .hash-tag child.

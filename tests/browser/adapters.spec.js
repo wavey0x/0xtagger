@@ -105,6 +105,40 @@ for (const site of sites) {
   });
 }
 
+test.describe('Etherscan explorer hosts', () => {
+  for (const [host, chain] of [
+    ['arbiscan.io', '42161'],
+    ['optimistic.etherscan.io', '10'],
+    ['sepolia.basescan.org', '84532'],
+    ['hyperevmscan.io', '999'],
+    ['testnet-mega.etherscan.io', '6343'],
+    ['blastscan.io', '81457'],
+  ]) {
+    test(`${host} uses the shared adapter with its own chain`, async ({ page }) => {
+      await start(page, {
+        site: `https://${host}/address/${address}`,
+        html: `<header>Explorer</header><main><span id="mainaddress">${address}</span></main>`,
+        records: [
+          { ...record, scope: `eip155:${chain}`, tags: ['This chain'] },
+          { ...record, scope: 'eip155:1', tags: ['Ethereum only'] },
+        ],
+      });
+      expect(await reported(page)).toMatchObject({ adapter: 'Etherscan', status: 'ready', network: `eip155:${chain}` });
+      await expect(page.locator('#mainaddress')).toHaveAttribute('data-0xtagger-tag', 'This chain');
+    });
+  }
+
+  for (const host of ['gnosisscan.io', 'apescan.io', 'opbnbscan.com', 'arbiscan.io.example']) {
+    test(`${host} is not claimed as Etherscan`, async ({ page }) => {
+      await start(page, {
+        site: `https://${host}/address/${address}`,
+        html: `<header>Explorer</header><main><span id="mainaddress">${address}</span></main>`,
+      });
+      expect(await reported(page)).toMatchObject({ adapter: 'This site', status: 'ready' });
+    });
+  }
+});
+
 test.describe('stYFI ranking', () => {
   const site = 'https://styfi.wavey.info/';
   const row = (wallet, { title = wallet, href = `https://etherscan.io/address/${wallet}` } = {}) => `
@@ -187,6 +221,17 @@ test.describe('Etherscan embedded transfers', () => {
     await expect(page.locator('#to')).toHaveAttribute('data-0xtagger-address', address);
     await expect(page.locator('#to')).toHaveAttribute('data-0xtagger-tag', 'Ethereum treasury');
     await expect(page.locator('#to')).toHaveText('BuilderNet');
+  });
+
+  test('a newly mapped testnet scopes addresses in its embedded table', async ({ page }) => {
+    await start(page, { site: `https://sepolia.basescan.org/token/generic-tokentxns2?a=${address}`,
+      html: table, framed: true, records: [
+        { ...record, scope: 'eip155:84532', tags: ['Base test wallet'] },
+        { ...record, scope: 'eip155:1', tags: ['Ethereum wallet'] },
+      ] });
+    expect(await reported(page)).toMatchObject({ adapter: 'Etherscan', status: 'ready', network: 'eip155:84532' });
+    await expect(page.locator('#to')).toHaveAttribute('data-0xtagger-tag', 'Base test wallet');
+    await expect(page.locator('#from')).toHaveAttribute('href', `/address/${other}#tokentxns`);
   });
 
   test('an embedded view still requires a table, and a page of its own still requires landmarks', async ({ page }) => {

@@ -1,6 +1,6 @@
 import { hostPermission, normalizeScope, parseAddress } from './shared.js';
 import { $, rpc, emptyState, currentSnapshot, syncText, bookPicker, connectForm, watchBook, tooltips } from './ui.js';
-import { networks, scopeName } from './networks.js';
+import { quickNetworks, scopeName } from './networks.js';
 import { checksumAddress } from './checksum.js';
 import { createEditor, editorStyles } from './editor.js';
 import { COPY_ICON, PENCIL_ICON, confirmCopied } from './icons.js';
@@ -82,7 +82,7 @@ function renderExact(address, output) {
   const controls = node('div', 'add-controls');
   const select = node('select');
   select.setAttribute('aria-label', 'Where new tags apply');
-  for (const [value, label] of [['global', 'All networks'], ...networks.map(network => [`eip155:${network.chain}`, network.name]), ['custom', 'Other chain…']]) {
+  for (const [value, label] of [['global', 'All networks'], ...quickNetworks.map(network => [`eip155:${network.chain}`, network.name]), ['custom', 'Other chain…']]) {
     const option = node('option', '', label); option.value = value; select.append(option);
   }
   select.value = chosenScope;
