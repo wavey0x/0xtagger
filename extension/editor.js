@@ -2,7 +2,7 @@ import { findRecord, MAX_TAG_LENGTH, normalizeTags, sameTags, sourceName, usable
 import { checksumAddress } from './checksum.js';
 import { chainLogos } from './vendor/chain-logos.js';
 import { quickNetworks, scopeName, scopeSymbol } from './networks.js';
-import { EDITOR_MARK, COPY_ICON, COPIED_ICON, EYE_ICON, EYE_OFF_ICON, GLOBE_ICON, CHEVRON_ICON, CLOSE_ICON, UNDO_ICON, GRIP_ICON, PLUS_ICON, confirmCopied } from './icons.js';
+import { EDITOR_MARK, COPY_ICON, COPIED_ICON, EYE_ICON, EYE_OFF_ICON, GLOBE_ICON, CHEVRON_ICON, CLOSE_ICON, GRIP_ICON, PLUS_ICON, confirmCopied } from './icons.js';
 
 const element = (tag, text, attrs = {}) => {
   const node = document.createElement(tag);
@@ -277,7 +277,8 @@ export function createEditor(container, { address, scope: opened = 'global', sta
     const remove = row.querySelector('.remove');
     if (remove) {
       const index = all().indexOf(item) + 1;
-      remove.innerHTML = item.removed ? UNDO_ICON : CLOSE_ICON;
+      // A removed line says what will happen and offers the way back in words.
+      if (item.removed) remove.textContent = 'Undo'; else remove.innerHTML = CLOSE_ICON;
       remove.setAttribute('aria-label', `${item.removed ? 'Keep' : 'Remove'} tag ${index}`);
       remove.title = item.removed ? 'Keep this tag' : 'Remove tag';
     }
