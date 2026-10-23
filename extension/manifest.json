@@ -16,7 +16,7 @@
     "default_icon": {"16": "icons/mark-idle-16.png", "24": "icons/mark-idle-24.png", "32": "icons/mark-idle-32.png", "48": "icons/mark-idle-48.png"}
   },
   "web_accessible_resources": [{
-    "resources": ["page.js", "editor.js", "overlay.js", "editor.css", "colors.js", "colors.css", "icons.js", "shared.js", "adapters.js", "detect.js", "networks.js", "checksum.js", "vendor/keccak.js"],
+    "resources": ["page.js", "editor.js", "overlay.js", "editor.css", "colors.js", "colors.css", "icons.js", "shared.js", "adapters.js", "detect.js", "networks.js", "checksum.js", "vendor/keccak.js", "vendor/chain-logos.js"],
     "matches": ["http://*/*", "https://*/*"]
   }]
 }

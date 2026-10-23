@@ -26,7 +26,7 @@ MAX_TAG_LENGTH = 80
 WEB_ASSETS = {
     'book-web.js', 'book.js', 'book.css', 'ui.js', 'ui.css', 'colors.js', 'colors.css',
     'store.js', 'records.js', 'stores/server.js', 'shared.js', 'networks.js',
-    'editor.js', 'editor.css', 'icons.js', 'icons/mark.svg', 'checksum.js', 'vendor/keccak.js',
+    'editor.js', 'editor.css', 'icons.js', 'icons/mark.svg', 'checksum.js', 'vendor/keccak.js', 'vendor/chain-logos.js',
 }
 
 

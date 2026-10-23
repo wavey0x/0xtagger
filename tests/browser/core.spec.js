@@ -37,13 +37,36 @@ test('switching addresses preserves unsaved edits; ranking and Enter save the ca
   await expect(shownAddress(page)).toHaveText(checksumAddress(other));
   await input(page).press('Escape');
   await edit(page).click();
-  await page.getByRole('button', { name: 'Move up 2' }).click();
+  await page.getByRole('textbox', { name: 'Tag 2', exact: true }).press('Alt+ArrowUp');
   await input(page).fill('Operations desk');
   await input(page).dispatchEvent('keydown', { key: 'Enter', isComposing: true });
   expect(await page.evaluate(() => window.saves.length)).toBe(0);
   await input(page).press('Enter');
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(await page.evaluate(() => window.saves[0])).toMatchObject({ address, scope: 'global', tags: ['Operations desk', 'Treasury'], version: 'one' });
+});
+
+// An address can be a different contract on another chain, so each network
+// keeps its own list. Moving to one reads its list; one with none starts from
+// the list for all networks, and the save is for that network alone.
+test('the network menu edits one network\'s list and saves to it', async ({ page }) => {
+  await start(page, { records: [record, { address, scope: 'eip155:8453', tags: ['Base vault'], version: 'base' }] });
+  await edit(page).click();
+  const menu = page.getByRole('listbox', { name: 'Save for' });
+  await page.getByRole('dialog').locator('.network').click();
+  await expect(menu.getByRole('option', { name: /Base/ })).toContainText('Base vault');
+  await menu.getByRole('option', { name: /Base/ }).click();
+  await expect(menu).toBeHidden();
+  await expect(page.getByRole('dialog').locator('.save-scope')).toHaveText('Base');
+  await expect(input(page)).toHaveValue('Base vault');
+  await page.getByRole('dialog').locator('.network').click();
+  await menu.getByRole('option', { name: /Arbitrum/ }).focus();
+  await page.keyboard.press('Enter');
+  await expect(input(page)).toHaveValue('Treasury');
+  await input(page).fill('Arbitrum treasury');
+  await save(page).click();
+  await expect.poll(() => page.evaluate(() => window.saves.at(-1)))
+    .toMatchObject({ address, scope: 'eip155:42161', tags: ['Arbitrum treasury', 'Operations'], version: null });
 });
 
 test('a pending save sends one write and its late completion cannot close a newer draft', async ({ page }) => {
@@ -587,7 +610,7 @@ test.describe('a name the website already shows', () => {
     await expect(fromSite(page)).toHaveText('(from Etherscan)');
     const [ink, plain] = await page.getByRole('dialog').evaluate(panel => [
       getComputedStyle(panel.querySelector('.row input')).color,
-      getComputedStyle(panel.querySelector('code')).color]);
+      getComputedStyle(panel).color]);
     expect(ink).toBe(plain);
     // Selected, so typing replaces it rather than appending to it.
     expect(await input(page).evaluate(field => [field.selectionStart, field.selectionEnd]))
@@ -778,9 +801,6 @@ test('a filled control writes in white, on a purple dark enough to carry it', as
       [getComputedStyle(node).color, getComputedStyle(node).backgroundColor]);
     expect(ink, `${scheme}: a filled control writes in white`).toBe('rgb(255, 255, 255)');
     expect(contrast(ink, fill), `${scheme}: Save against its own fill`).toBeGreaterThanOrEqual(4.5);
-    // The switch knob is the same white on the same fill.
-    const knob = page.getByRole('dialog').locator('.visibility span');
-    expect(await knob.evaluate(node => getComputedStyle(node).backgroundColor)).toBe('rgb(255, 255, 255)');
   }
   await page.emulateMedia({ colorScheme: null });
 });

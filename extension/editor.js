@@ -1,7 +1,8 @@
 import { findRecord, MAX_TAGS, MAX_TAG_LENGTH, normalizeTags, sameTags, sourceName, usableName } from './shared.js';
 import { checksumAddress } from './checksum.js';
-import { scopeName } from './networks.js';
-import { EDITOR_MARK, COPY_ICON, COPIED_ICON, confirmCopied } from './icons.js';
+import { chainLogos } from './vendor/chain-logos.js';
+import { quickNetworks, scopeName } from './networks.js';
+import { EDITOR_MARK, COPY_ICON, COPIED_ICON, EYE_ICON, EYE_OFF_ICON, GLOBE_ICON, CHEVRON_ICON, CHECK_ICON, PLUS_ICON, CLOSE_ICON, GRIP_ICON, confirmCopied } from './icons.js';
 
 const element = (tag, text, attrs = {}) => {
   const node = document.createElement(tag);
@@ -37,11 +38,14 @@ const REFUSED_STILL = [
 ];
 
 // Shared by the page popover and book. The draft never follows a recycled row.
-export function createEditor(container, { address, scope = 'global', state, save, close, onLayout = () => {}, visibility, toggleVisibility, suggestion = null, modal = false }) {
+export function createEditor(container, { address, scope: opened = 'global', state, save, close, onLayout = () => {}, visibility, toggleVisibility, suggestion = null, modal = false }) {
   const book = state.activeBook;
   // Which book a save goes to only matters once there is more than one.
   const bookName = state.books.length > 1 ? state.bookName : '';
   const displayAddress = checksumAddress(address);
+  // Which network a save is for. It opens where the record already is, and the
+  // menu beside Save moves it.
+  let scope = opened;
   const own = findRecord(state.records, address, scope);
   // What the book says about this address, and the version a save must match.
   // A scope with no record of its own starts from the tags shown everywhere.
@@ -75,16 +79,17 @@ export function createEditor(container, { address, scope = 'global', state, save
   let pageNotice = '';
 
   const panel = element(modal ? 'dialog' : 'section', undefined, { class: 'editor', role: 'dialog', 'aria-label': 'Edit wallet tags' });
-  panel.innerHTML = `<header><strong class="brand" role="img" aria-label="0xtagger">${EDITOR_MARK}tagger</strong><span class="source"></span>${visibility ? '<div class="visibility-group"><span>Show tags</span><button type="button" class="switch visibility" role="switch" aria-label="Show my tags for this address" aria-checked="true"><span></span></button></div>' : '<button type="button" class="quiet close" aria-label="Close editor" title="Close">×</button>'}</header>
-    <div class="address-line"><code></code><button type="button" class="quiet copy" aria-label="Copy">${COPY_ICON}</button></div>
-    <div class="rows"></div>
+  panel.innerHTML = `<header><span class="brand" role="img" aria-label="0xtagger">${EDITOR_MARK}<svg class="sheen" aria-hidden="true"><linearGradient id="brand-sheen" x1="0" y1="0" x2="1" y2="1"><stop offset="0"/><stop offset="1"/></linearGradient></svg></span><code></code><button type="button" class="quiet copy" aria-label="Copy">${COPY_ICON}</button><span class="source"></span>${visibility ? '<div class="visibility-group"><button type="button" class="quiet visibility" role="switch" aria-label="Show my tags for this address" aria-checked="true"></button></div>' : `<button type="button" class="quiet close" aria-label="Close editor" title="Close">${CLOSE_ICON}</button>`}</header>
+    <div class="rows"></div><button type="button" class="quiet add" aria-label="Add tag" title="Add tag">${PLUS_ICON}Add tag</button>
     <p class="preview"></p><p class="offer" hidden></p><p class="notice" role="status"></p><div class="conflict" hidden></div>
-    <footer><button type="button" class="quiet add" aria-label="Add tag" title="Add tag">+</button>${modal && own ? '<button type="button" class="quiet clear">Remove tags</button>' : ''}<span class="save-scope" id="save-scope"></span><button type="button" class="primary save" aria-describedby="save-scope">Save</button></footer>`;
+    <footer><div class="scope"><button type="button" class="network" aria-haspopup="listbox" aria-expanded="false"><span class="network-mark"></span><span class="save-scope" id="save-scope"></span>${CHEVRON_ICON}</button><div class="networks" role="listbox" aria-label="Save for" popover="manual"></div></div>${modal && own ? '<button type="button" class="quiet clear">Remove tags</button>' : ''}<button type="button" class="primary save" aria-describedby="save-scope">Save</button></footer>`;
   container.replaceChildren(panel);
   if (modal) panel.showModal();
   const get = selector => panel.querySelector(selector);
-  get('code').textContent = displayAddress;
-  get('.save-scope').textContent = scopeName(scope);
+  // The whole address is in the text, so selecting or reading it gives all of
+  // it; only its middle is folded away on screen.
+  get('code').append(element('span', displayAddress.slice(0, 6)), element('span', displayAddress.slice(6, -4), { class: 'fold' }), element('span', displayAddress.slice(-4)));
+  get('code').title = displayAddress;
   const origin = modal && own?.source ? `Source: ${sourceName(own.source)}` : '';
   get('.source').textContent = [bookName, origin].filter(Boolean).join(' · ');
   get('.source').title = [bookName ? `Saving to ${bookName}` : 'Saving to your address book', origin].filter(Boolean).join(' · ');
@@ -94,7 +99,8 @@ export function createEditor(container, { address, scope = 'global', state, save
   function outside(event) {
     const path = event.composedPath();
     const box = modal && panel.getBoundingClientRect();
-    const inside = path.includes(panel) && (!modal || event.clientX >= box.left && event.clientX <= box.right && event.clientY >= box.top && event.clientY <= box.bottom);
+    if (menuOpen() && !path.includes(get('.networks')) && !path.includes(get('.network'))) closeMenu();
+    const inside = path.includes(get('.networks')) || path.includes(panel) && (!modal || event.clientX >= box.left && event.clientX <= box.right && event.clientY >= box.top && event.clientY <= box.bottom);
     if (event.button === 0 && !inside && !path.some(node => node.matches?.('[data-0xtagger-edit]'))) finish();
   }
   // Dismiss before the browser focuses the clicked website control. The
@@ -104,6 +110,7 @@ export function createEditor(container, { address, scope = 'global', state, save
     if (!closed) {
       closed = true;
       panel.ownerDocument.removeEventListener('pointerdown', outside, true);
+      closeMenu();
       if (modal) panel.close();
       close();
     }
@@ -118,6 +125,7 @@ export function createEditor(container, { address, scope = 'global', state, save
     get('.visibility-group').hidden = !view.available;
     button.disabled = !view.enabled;
     button.setAttribute('aria-checked', String(!view.hidden));
+    button.innerHTML = view.hidden ? EYE_OFF_ICON : EYE_ICON;
     button.title = `${view.hidden ? 'Show my tags' : 'Show website original'} for this address on this page. Resets on refresh.`;
   }
   if (visibility) get('.visibility').onclick = () => { if (!closed) { toggleVisibility(); updateVisibility(); } };
@@ -129,8 +137,82 @@ export function createEditor(container, { address, scope = 'global', state, save
       await navigator.clipboard.writeText(displayAddress);
       confirmCopied(get('.copy'));
     }
-    catch { get('.notice').textContent = 'Select the full address above to copy it.'; queueMicrotask(onLayout); }
+    catch { get('code').classList.add('whole'); get('.notice').textContent = 'Select the full address above to copy it.'; queueMicrotask(onLayout); }
   };
+  // The network menu. It lives in the top layer, so neither the panel's own
+  // scrolling nor a website's clipping can cut it off.
+  const menu = get('.networks');
+  const menuOpen = () => get('.network').getAttribute('aria-expanded') === 'true';
+  // A network's own logo where there is one; a plain disc for any other chain.
+  const networkMark = choice => (choice === 'global' ? GLOBE_ICON : chainLogos[choice.slice(7)] || '<i class="dot"></i>');
+  function showScope() {
+    get('.network-mark').innerHTML = networkMark(scope);
+    get('.save-scope').textContent = scopeName(scope);
+    get('.network').title = `Tags for ${scopeName(scope)}`;
+  }
+  function placeMenu() {
+    const at = get('.network').getBoundingClientRect();
+    const height = menu.offsetHeight;
+    const below = innerHeight - at.bottom - 8;
+    menu.style.left = `${Math.max(8, Math.min(at.left, innerWidth - menu.offsetWidth - 8))}px`;
+    menu.style.top = `${below >= height || at.top < height ? at.bottom + 4 : at.top - height - 4}px`;
+  }
+  function openMenu() {
+    const choices = ['global', ...quickNetworks.map(network => `eip155:${network.chain}`)];
+    if (!choices.includes(scope)) choices.push(scope);
+    // Each network keeps its own list for an address; a page shows that list
+    // first and falls back to the one for all networks.
+    const note = element('p', 'Each network can have its own tags. Pages use them first, then All networks.', { class: 'networks-note' });
+    menu.replaceChildren(note, ...choices.map(choice => {
+      const option = element('button', undefined, { type: 'button', role: 'option', 'aria-selected': String(choice === scope), 'data-scope': choice, tabindex: '-1' });
+      // A network with its own name for this address says so, which is the
+      // only way to see an override without opening the book.
+      const named = findRecord(activeState.records, address, choice)?.tags.join(', ');
+      option.innerHTML = networkMark(choice);
+      option.append(element('span', scopeName(choice), { class: 'name' }));
+      if (named) option.append(element('span', named, { class: 'named' }));
+      if (choice === scope) option.insertAdjacentHTML('beforeend', CHECK_ICON);
+      option.onclick = () => { closeMenu(); chooseScope(choice); get('.network').focus(); };
+      return option;
+    }));
+    menu.showPopover();
+    get('.network').setAttribute('aria-expanded', 'true');
+    placeMenu();
+    menu.querySelector('[aria-selected="true"]').focus({ preventScroll: true });
+    addEventListener('scroll', closeMenu, { capture: true, passive: true });
+    addEventListener('resize', closeMenu, { passive: true });
+  }
+  function closeMenu() {
+    if (!menuOpen()) return;
+    get('.network').setAttribute('aria-expanded', 'false');
+    menu.hidePopover();
+    removeEventListener('scroll', closeMenu, { capture: true });
+    removeEventListener('resize', closeMenu);
+  }
+  // Moving to another network reads what that network says. Words already
+  // typed stay in the field and go wherever the save does.
+  function chooseScope(next) {
+    if (next === scope || phase !== 'idle') return;
+    const typed = edited() || untouched();
+    scope = next;
+    const fresh = reading(activeState);
+    if (typed) { loaded = fresh; draft.version = fresh.version; }
+    else adopt(fresh);
+    showScope();
+    renderRows(null);
+  }
+  get('.network').onclick = () => { if (menuOpen()) closeMenu(); else openMenu(); };
+  menu.addEventListener('keydown', event => {
+    const options = [...menu.querySelectorAll('[role="option"]')];
+    const at = options.indexOf(menu.getRootNode().activeElement);
+    const step = { ArrowDown: 1, ArrowUp: -1 }[event.key];
+    if (step) { event.preventDefault(); options[(at + step + options.length) % options.length].focus(); }
+    else if (event.key === 'Home' || event.key === 'End') { event.preventDefault(); options.at(event.key === 'Home' ? 0 : -1).focus(); }
+    else if (event.key === 'Escape' || event.key === 'Tab') {
+      event.preventDefault(); event.stopPropagation(); closeMenu(); get('.network').focus();
+    }
+  });
+  showScope();
   // A record for one network giving way to a global one is worth saying, because
   // the tag that takes over is not on screen. That emptying the field puts the
   // address back is the field in front of you, said twice.
@@ -198,11 +280,8 @@ export function createEditor(container, { address, scope = 'global', state, save
     }
     panel.querySelectorAll('input').forEach(input => { input.disabled = busy; });
     const rows = panel.querySelectorAll('.row');
-    rows.forEach((row, index) => {
-      row.querySelector('[aria-label^="Move up"]').disabled = busy || index === 0;
-      row.querySelector('[aria-label^="Move down"]').disabled = busy || index === rows.length - 1;
-      row.querySelector('[aria-label^="Remove"]').disabled = busy;
-    });
+    rows.forEach(row => { row.querySelector('[aria-label^="Remove"]').disabled = busy; });
+    get('.network').disabled = busy;
     get('.add').disabled = busy || rows.length >= MAX_TAGS;
     if (get('.clear')) get('.clear').disabled = busy || !draft.tags.length;
   }
@@ -217,19 +296,47 @@ export function createEditor(container, { address, scope = 'global', state, save
       input.value = tag;
       // Typing changes no panel geometry; avoid positioning/layout work per letter.
       input.oninput = () => { draft.tags[index] = input.value; if (index === 0) attribution(); };
+      // Order is set by dragging a row by its handle, or with Alt and an arrow
+      // from the keyboard. The first tag is the one a page shows.
+      const move = to => {
+        if (to < 0 || to >= draft.tags.length || to === index) return;
+        draft.tags.splice(to, 0, ...draft.tags.splice(index, 1));
+        renderRows(to);
+      };
+      input.setAttribute('aria-keyshortcuts', 'Alt+ArrowUp Alt+ArrowDown');
+      input.addEventListener('keydown', event => {
+        const step = event.altKey && { ArrowUp: -1, ArrowDown: 1 }[event.key];
+        if (step && phase === 'idle') { event.preventDefault(); move(index + step); }
+      });
+      const grip = element('span', undefined, { class: 'grip', title: 'Drag to reorder', 'aria-hidden': 'true' });
+      grip.innerHTML = GRIP_ICON;
+      // Only the handle starts a drag, so selecting text in the field still works.
+      grip.onpointerdown = () => { if (phase === 'idle') row.draggable = true; };
+      grip.onpointerup = () => { row.draggable = false; };
+      // A drag moves the rows themselves; the order is read back from them once
+      // it is let go, so nothing is held against a row that has moved.
+      row.addEventListener('dragstart', event => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', ''); row.classList.add('dragging'); });
+      row.addEventListener('dragend', () => {
+        row.draggable = false;
+        const order = [...rows.querySelectorAll('.row input')];
+        draft.tags = order.map(field => field.value);
+        renderRows(order.indexOf(input));
+      });
+      row.addEventListener('dragover', event => {
+        const held = rows.querySelector('.dragging');
+        if (!held) return;
+        event.preventDefault();
+        if (held === row) return;
+        const after = [...rows.children].indexOf(held) < [...rows.children].indexOf(row);
+        rows.insertBefore(held, after ? row.nextSibling : row);
+      });
       const controls = element('div', undefined, { class: 'rank' });
       if (index === 0 && draft.tags.length > 1) controls.append(element('small', 'Default', { class: 'default' }));
-      for (const [text, action, offset] of [['↑', 'Move up', -1], ['↓', 'Move down', 1], ['×', 'Remove tag', 0]]) {
-        const button = element('button', text, { type: 'button', class: 'quiet', 'aria-label': `${action} ${index + 1}` });
-        button.onclick = () => {
-          const tags = draft.tags;
-          if (!offset) tags.splice(index, 1);
-          else [tags[index], tags[index + offset]] = [tags[index + offset], tags[index]];
-          renderRows(Math.max(0, index + offset));
-        };
-        controls.append(button);
-      }
-      row.append(input, controls);
+      const remove = element('button', undefined, { type: 'button', class: 'quiet', 'aria-label': `Remove tag ${index + 1}`, title: 'Remove tag' });
+      remove.innerHTML = CLOSE_ICON;
+      remove.onclick = () => { draft.tags.splice(index, 1); renderRows(Math.min(index, draft.tags.length - 1)); };
+      controls.append(remove);
+      row.append(grip, input, controls);
       rows.append(row);
     });
     updateControls();

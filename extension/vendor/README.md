@@ -17,3 +17,15 @@ export { keccak_256 } from './sha3.js';
 ```
 
 Run pinned esbuild 0.28.2 on that entry with `--bundle --format=esm --platform=browser --target=chrome120 --minify --legal-comments=inline` and the banner `/* @noble/hashes 2.4.0 · Keccak-256 only · MIT · see LICENSE and README.md */`. Write the result here as `keccak.js`. Check it with the official EIP-55 vectors in `tests/checksum.test.js`.
+
+# Network logos
+
+`chain-logos.js` holds eight network logos from MIT-licensed **@web3icons/core 4.0.58** by 0xa3k5 (https://github.com/0xa3k5/web3icons, `packages/core`). Each is the package's 24×24 SVG with its `web3icons` class and fixed size removed and `aria-hidden="true"` added. Sepolia uses the `mono` Ethereum mark with its fill set to `currentColor`; the rest are `branded`.
+
+The npm tarball is `web3icons-core-4.0.58.tgz`, with SHA-512 integrity:
+
+```
+sha512-22a+C1uHAhhEgSfumj0MisJhZty9ldJIemv1p0QeQaEfq8n/RrM3HptNf7MsAJbcq4jhqoDRGMRvYAgbUTytaA==
+```
+
+The files are `dist/svgs/networks/branded/{ethereum,base,arbitrum-one,optimism,binance-smart-chain,polygon,gnosis}.svg.js` and `dist/svgs/networks/mono/ethereum.svg.js`.
