@@ -136,6 +136,18 @@ test('clicking away saves the draft and preserves native focus and copy actions'
   expect(await page.evaluate(() => window.saves.length)).toBe(1);
 });
 
+test('Cancel shows only with unsaved changes and leaves without saving', async ({ page }) => {
+  await start(page);
+  await edit(page).click();
+  const discard = page.getByRole('button', { name: 'Cancel', exact: true });
+  await expect(discard).toBeHidden();
+  await input(page).fill('Not wanted');
+  await expect(discard).toBeVisible();
+  await discard.click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await page.evaluate(() => window.saves)).toHaveLength(0);
+});
+
 test('website-script clicks and keypresses cannot submit edits', async ({ page }) => {
   for (const gesture of ['remove', 'Enter']) {
     await start(page);
@@ -826,7 +838,6 @@ test('a saved line confirms with a white tick on green', async ({ page }) => {
     await start(page, { html: `<style>html{background:${surface}}</style>` + wallets });
     await tagFor(page, 'first').click();
     await input(page).fill('Treasury rename');
-    await expect(page.getByRole('dialog').locator('.row.dirty .mark')).toBeVisible();
     await submit(page);
     const stroke = page.getByRole('dialog').locator('.mark.confirmed svg path');
     await expect(stroke).toHaveAttribute('stroke-dasharray', '14.2');

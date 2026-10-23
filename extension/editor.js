@@ -96,7 +96,7 @@ export function createEditor(container, { address, scope: opened = 'global', sta
 
   const panel = element(modal ? 'dialog' : 'section', undefined, { class: 'editor', role: 'dialog', 'aria-label': 'Edit wallet tags' });
   panel.innerHTML = `<header><span class="brand" role="img" aria-label="0xtagger">${EDITOR_MARK}<svg class="sheen" aria-hidden="true"><linearGradient id="brand-sheen" x1="0" y1="0" x2="1" y2="1"><stop offset="0"/><stop offset="1"/></linearGradient></svg></span><code></code><button type="button" class="quiet copy" aria-label="Copy">${COPY_ICON}</button><span class="source"></span>${visibility ? '<div class="visibility-group"><button type="button" class="quiet visibility" role="switch" aria-label="Show my tags for this address" aria-checked="true"></button></div>' : `<button type="button" class="quiet close" aria-label="Close editor" title="Close">${CLOSE_ICON}</button>`}</header>
-    <div class="lines"></div><button type="button" class="quiet add" aria-label="Add tag" title="Add tag">${PLUS_ICON}</button><div class="networks" role="listbox" aria-label="Save for" popover="manual"></div>
+    <div class="lines"></div><div class="foot"><button type="button" class="quiet add" aria-label="Add tag" title="Add tag">${PLUS_ICON}</button><button type="button" class="quiet discard" title="Leave without saving (Esc)" hidden>Cancel</button></div><div class="networks" role="listbox" aria-label="Save for" popover="manual"></div>
     <p class="offer" hidden></p><p class="notice" role="status"></p><div class="conflict" hidden></div>
     <div class="extras">${modal && own ? '<button type="button" class="quiet clear">Remove tags</button>' : ''}</div>`;
   container.replaceChildren(panel);
@@ -296,6 +296,10 @@ export function createEditor(container, { address, scope: opened = 'global', sta
     // "+" waits until there is a tag to add another to.
     get('.add').hidden = all().includes(fresh) && !fresh.tag.trim();
     get('.add').disabled = busy;
+    // Leaving without saving, said where it can be seen while there is
+    // something to lose. Escape does the same.
+    get('.discard').hidden = !edited();
+    get('.discard').disabled = busy;
     if (get('.clear')) get('.clear').disabled = busy || !lines.some(item => !item.removed);
   }
   // A new order for the lines. Tags whose order changed within their network
@@ -310,6 +314,7 @@ export function createEditor(container, { address, scope: opened = 'global', sta
   }
   // "+" opens the new line; pressed again with a tag in it, that tag becomes a
   // line of its own and a new blank opens under it.
+  get('.discard').onclick = () => finish();
   get('.add').onclick = () => {
     if (phase !== 'idle') return;
     if (all().includes(fresh) && fresh.tag.trim()) { lines.push(fresh); fresh = blank(); }
@@ -372,9 +377,8 @@ export function createEditor(container, { address, scope: opened = 'global', sta
       const network = element('button', undefined, { type: 'button', class: 'network', 'aria-haspopup': 'listbox', 'aria-expanded': 'false' });
       network.innerHTML = `<span class="network-mark"></span><span class="symbol" aria-hidden="true"></span><span class="save-scope"></span>${CHEVRON_ICON}`;
       network.onclick = () => { if (menuFor?.item === item) closeMenu(); else openMenu(item, network); };
-      // Where Save was, a quiet hint while the line has something to save, and
-      // the tick that confirms it once it is saved.
-      const mark = element('span', '↵', { class: 'mark', 'aria-hidden': 'true', title: 'Press Enter to save' });
+      // The tick that confirms a save, shown on the line's corner only then.
+      const mark = element('span', undefined, { class: 'mark', 'aria-hidden': 'true' });
       row.append(input, network, mark);
       if (item !== fresh) {
         const remove = element('button', undefined, { type: 'button', class: 'quiet remove' });

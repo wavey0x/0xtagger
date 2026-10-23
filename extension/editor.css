@@ -69,7 +69,11 @@ header .close { margin-left: auto; }
 .row:hover .remove,.remove:focus-visible,.row.removed .remove { opacity: 1; }
 .remove:disabled { opacity: 0; }
 /* A new tag is one small "+" away, under the list. */
-.add { display: flex; align-items: center; justify-content: center; width: 24px; height: 22px; margin: 3px 0 0 4px; padding: 4px; color: var(--0xtagger-accent); }
+.foot { display: flex; align-items: center; min-height: 22px; margin-top: 3px; }
+.foot:not(:has(> :not([hidden]))) { display: none; }
+.discard { margin-left: auto; padding: 3px 6px; color: var(--0xtagger-muted); font-size: 11px; font-weight: 600; }
+.discard:hover { color: var(--0xtagger-ink); }
+.add { display: flex; align-items: center; justify-content: center; width: 24px; height: 22px; margin: 0 0 0 4px; padding: 4px; color: var(--0xtagger-accent); }
 .add:hover { color: var(--0xtagger-accent); background: var(--0xtagger-accent-soft); }
 .add svg { width: 14px; height: 14px; transition: transform 100ms ease-out; }
 .add:active svg { transform: scale(.82); transition-duration: 70ms; }
@@ -91,12 +95,11 @@ header .close { margin-left: auto; }
 .networks .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .networks .own { flex: none; width: 5px; height: 5px; border-radius: 50%; background: var(--0xtagger-accent); }
 .networks .symbol { color: var(--0xtagger-muted); font: 600 10px ui-monospace, monospace; }
-/* Enter saves. Where a button would be, a quiet return glyph says so while a
-   line has something to save, and turns into a green tick once it is saved. */
-.mark { display: none; flex: none; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; color: var(--0xtagger-accent); font: 700 13px/1 system-ui, sans-serif; opacity: .7; }
-.row.dirty .mark,.mark.confirmed { display: flex; }
-.mark.confirmed { color: white; background: var(--0xtagger-success-fill); opacity: 1; box-shadow: 0 1px 4px -1px var(--0xtagger-success-fill); }
-.mark svg { width: 12px; height: 12px; }
+/* Enter or a click away saves. Each saved line confirms with a green tick on
+   its corner, where × sits, so nothing in the line moves. */
+.mark { position: absolute; top: -6px; right: -6px; z-index: 2; display: none; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; }
+.mark.confirmed { display: flex; color: white; background: var(--0xtagger-success-fill); box-shadow: 0 1px 4px -1px var(--0xtagger-success-fill); }
+.mark svg { width: 11px; height: 11px; }
 .row.saved { background: color-mix(in srgb, var(--0xtagger-success-fill) 10%, transparent); transition: background 200ms ease; }
 .extras { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; }
 .extras:not(:has(> :not([hidden]))) { display: none; }
