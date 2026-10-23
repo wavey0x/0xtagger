@@ -118,7 +118,17 @@ export function createEditor(container, { address, scope: opened = 'global', sta
     const box = modal && panel.getBoundingClientRect();
     if (menuFor && !path.includes(menu) && !path.includes(menuFor.button)) closeMenu();
     const inside = path.includes(menu) || path.includes(panel) && (!modal || event.clientX >= box.left && event.clientX <= box.right && event.clientY >= box.top && event.clientY <= box.bottom);
-    if (event.button === 0 && !inside && !path.some(node => node.matches?.('[data-0xtagger-edit]'))) finish();
+    if (event.button === 0 && !inside && !path.some(node => node.matches?.('[data-0xtagger-edit]'))) leave(event.isTrusted);
+  }
+  // Clicking away keeps what was typed: anything waiting is saved, and the
+  // editor closes once it is. A failed save leaves it open with the draft.
+  // Escape is the way to leave without saving. A website script cannot save
+  // by faking a click, so one leaves an edited draft where it is.
+  async function leave(trusted) {
+    if (phase !== 'idle' || !edited()) { finish(); return true; }
+    if (!trusted) return false;
+    await commit(all().filter(pending));
+    return closed;
   }
   // Dismiss before the browser focuses the clicked website control. The
   // composed path distinguishes panel content across its shadow boundary.
@@ -525,14 +535,15 @@ export function createEditor(container, { address, scope: opened = 'global', sta
   renderLines();
   return {
     focus, updateVisibility,
-    closeIfUnchanged() {
-      if (phase !== 'idle' || edited()) {
+    // Opening another address is leaving this one: its draft is saved first.
+    // While a save is under way, or one cannot be made, the draft stays open.
+    async closeIfUnchanged() {
+      if (phase === 'idle' && (!edited() || activeState.activeBook === book) && await leave(true)) return true;
+      if (!closed) {
         pageNotice = 'Save or close this draft to edit another address.';
         guard(); focus();
-        return false;
       }
-      finish();
-      return true;
+      return closed;
     },
     // Lines nobody has touched follow the book, so a name saved in another tab
     // or window is simply what you see rather than a conflict waiting to

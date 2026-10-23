@@ -444,7 +444,7 @@ export async function createPageController({
   }
   observe();
 
-  function open(target) {
+  async function open(target) {
     if (!target) return;
     if (editor && editorTarget?.address === target.address && editorTarget.network === target.network &&
         editorTarget.book === state.activeBook) {
@@ -452,7 +452,8 @@ export async function createPageController({
       position(true); editor.focus();
       return;
     }
-    if (editor && !editor.closeIfUnchanged()) { position(true); return; }
+    if (editor && !(await editor.closeIfUnchanged())) { position(true); return; }
+    if (editor) return;
     editorTarget = { ...target, book: state.activeBook };
     // About to edit is the moment a stale copy becomes a conflict, so this is
     // worth an ask. It is conditional and rate limited in the worker.
@@ -497,7 +498,11 @@ export async function createPageController({
         editor = null;
         editorTarget = null;
         overlay.hide();
-        if (target.element?.isConnected && targets.has(target.element)) {
+        // Focus goes back to the tag only if it was still in the editor: a
+        // click away that saved first has already put it somewhere else.
+        const holder = doc.activeElement;
+        const stray = !holder || holder === doc.body || holder.matches?.(`[${UI_ATTRIBUTE}]`) || holder.closest?.(`[${UI_ATTRIBUTE}]`);
+        if (stray && target.element?.isConnected && targets.has(target.element)) {
           target.element.focus({ preventScroll: true });
         }
       },

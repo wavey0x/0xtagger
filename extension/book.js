@@ -73,8 +73,9 @@ function render(next = state) {
   } else if (pending) renderReview();
   search();
 }
-function edit(address, scope = 'global') {
-  if (editor && !editor.closeIfUnchanged()) return;
+async function edit(address, scope = 'global') {
+  if (editor && !(await editor.closeIfUnchanged())) return;
+  if (editor) return;
   editor = createEditor(shadow, { address, scope, state, modal: true,
     save: draft => rpc({ type: 'Save', draft }),
     close: () => { editor = null; shadow.replaceChildren(); $('#search').focus(); },

@@ -25,25 +25,29 @@ test('500 addresses retain native text, navigation, selection and copying; disab
   expect(await page.evaluate(() => window.nativeCopied)).toBe(address);
 });
 
-test('switching addresses preserves unsaved edits; ranking and Enter save the captured list', async ({ page }) => {
+test('switching addresses saves the draft first; Escape abandons one; ranking and Enter save the captured list', async ({ page }) => {
   await start(page);
   await edit(page).click();
   await expect(page.getByRole('dialog').locator('.save-scope').first()).toHaveText('All networks');
   await edit(page, 1).click(); // An untouched editor can be replaced.
   await expect(shownAddress(page)).toHaveText(checksumAddress(other));
-  await input(page).fill('Unsaved');
+  await input(page).fill('Typed here');
   await edit(page).click();
-  await expect(input(page)).toHaveValue('Unsaved');
-  await expect(shownAddress(page)).toHaveText(checksumAddress(other));
+  await expect(shownAddress(page)).toHaveText(checksumAddress(address));
+  expect(await page.evaluate(() => window.saves)).toEqual([expect.objectContaining({ address: other, scope: 'global', tags: ['Typed here'] })]);
+  await input(page).fill('Abandoned');
   await input(page).press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await page.evaluate(() => window.saves)).toHaveLength(1);
   await edit(page).click();
+  await expect(input(page)).toHaveValue('Treasury');
   await page.getByRole('textbox', { name: 'Tag 2', exact: true }).press('Alt+ArrowUp');
   await input(page).fill('Operations desk');
   await input(page).dispatchEvent('keydown', { key: 'Enter', isComposing: true });
-  expect(await page.evaluate(() => window.saves.length)).toBe(0);
+  expect(await page.evaluate(() => window.saves.length)).toBe(1);
   await input(page).press('Enter');
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  expect(await page.evaluate(() => window.saves[0])).toMatchObject({ address, scope: 'global', tags: ['Operations desk', 'Treasury'], version: 'one' });
+  expect(await page.evaluate(() => window.saves.at(-1))).toMatchObject({ address, scope: 'global', tags: ['Operations desk', 'Treasury'], version: 'one' });
 });
 
 // An address can be a different contract on another chain, so each tag
@@ -114,22 +118,22 @@ test('a pending save sends one write and its late completion cannot close a newe
   expect(await page.evaluate(() => window.saves[0].address)).toBe(address);
 });
 
-test('outside dismissal cancels the draft and preserves native focus and copy actions', async ({ page }) => {
+test('clicking away saves the draft and preserves native focus and copy actions', async ({ page }) => {
   await start(page);
   await edit(page).click();
-  await input(page).fill('Unsaved');
+  await input(page).fill('Kept by clicking away');
   await shownAddress(page).click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await page.locator('#native-input').click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.locator('#native-input')).toBeFocused();
+  expect(await page.evaluate(() => window.saves)).toEqual([expect.objectContaining({ address, tags: ['Kept by clicking away', 'Operations'] })]);
   await page.locator('#native-input').fill('Native typing');
   await edit(page).click();
-  await expect(input(page)).toHaveValue('Treasury');
   await page.locator('#native-copy').click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(await page.evaluate(() => window.nativeCopied)).toBe(address);
-  expect(await page.evaluate(() => window.saves.length)).toBe(0);
+  expect(await page.evaluate(() => window.saves.length)).toBe(1);
 });
 
 test('website-script clicks and keypresses cannot submit edits', async ({ page }) => {
@@ -695,8 +699,8 @@ test.describe('a name the website already shows', () => {
   });
 
   // A name this editor put in the field itself is not something anyone typed,
-  // so moving to another address must not ask anyone to save work they did not
-  // do. Typing makes it a draft, and then it does.
+  // so moving to another address must not save it on anyone's behalf. Typing
+  // makes it a draft, and then moving on saves it.
   test('an untouched suggestion is not an unsaved draft', async ({ page }) => {
     // Far enough apart that the open editor does not sit over the second row.
     await open(page, labelled('one', other, 'Uniswap V3: Router')
@@ -706,12 +710,13 @@ test.describe('a name the website already shows', () => {
     await tagFor(page, 'two').click();
     await expect(shownAddress(page)).toHaveText(checksumAddress(address));
     await expect(page.getByRole('dialog')).not.toContainText('Save or close');
+    expect(await page.evaluate(() => window.saves)).toHaveLength(0);
 
     await tagFor(page, 'one').click();
     await input(page).fill('Mine now');
     await tagFor(page, 'two').click();
-    await expect(shownAddress(page)).toHaveText(checksumAddress(other));
-    await expect(page.getByRole('dialog')).toContainText('Save or close');
+    await expect(shownAddress(page)).toHaveText(checksumAddress(address));
+    expect(await page.evaluate(() => window.saves)).toEqual([expect.objectContaining({ address: other, tags: ['Mine now'] })]);
   });
 
   // An address, or a piece of one, is not a name worth offering back.
