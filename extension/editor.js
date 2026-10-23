@@ -146,7 +146,7 @@ export function createEditor(container, { address, scope: opened = 'global', sta
     }
   }
   function focus() {
-    (panel.querySelector('.row input:not(:disabled)') || get('.copy')).focus({ preventScroll: true });
+    (panel.querySelector('.row textarea:not(:disabled)') || get('.copy')).focus({ preventScroll: true });
   }
   function updateVisibility() {
     if (!visibility || closed) return;
@@ -242,7 +242,7 @@ export function createEditor(container, { address, scope: opened = 'global', sta
   function attribution() {
     const live = Boolean(prefill) && fresh.tag === prefill.name;
     const row = rowOf(fresh);
-    const field = row?.querySelector('input');
+    const field = row?.querySelector('textarea');
     const shown = row?.querySelector('.from');
     if (!live) { shown?.remove(); field?.removeAttribute('aria-describedby'); }
     else if (row && !shown) {
@@ -255,7 +255,7 @@ export function createEditor(container, { address, scope: opened = 'global', sta
     get('.offer').replaceChildren();
     if (spare) {
       const button = element('button', 'Add tag', { type: 'button', class: 'quiet' });
-      button.onclick = () => { fresh.tag = offered.name; fresh.scope = opened; adding = true; renderLines(null); rowOf(fresh)?.querySelector('input').focus(); };
+      button.onclick = () => { fresh.tag = offered.name; fresh.scope = opened; adding = true; renderLines(null); rowOf(fresh)?.querySelector('textarea').focus(); };
       get('.offer').append(element('span', offered.name), button);
     }
   }
@@ -265,6 +265,9 @@ export function createEditor(container, { address, scope: opened = 'global', sta
     get('.notice').textContent = phase === 'saved' ? '' : switched ? `You switched to ${activeState.bookName}. Close this editor and try again.` : pageNotice;
     queueMicrotask(onLayout);
   }
+  // Typing does no layout work of its own; only a name wrapping onto another
+  // line, or back, changes the panel's height and moves it.
+  const wraps = new ResizeObserver(() => onLayout());
   const rowOf = item => [...panel.querySelectorAll('.row')][all().indexOf(item)];
   // One line's state, said on the line: tinted while it has something to save,
   // plain once it is saved. Enter saves; there is no button to find.
@@ -278,8 +281,6 @@ export function createEditor(container, { address, scope: opened = 'global', sta
     row.querySelector('.save-scope').textContent = scopeName(item.scope);
     row.querySelector('.network').title = `Network: ${scopeName(item.scope)}`;
     row.querySelector('.network').classList.toggle('everywhere', item.scope === 'global');
-    // A name too long for its line can be read whole on hover.
-    row.querySelector('input').title = item.tag;
     const remove = row.querySelector('.remove');
     if (remove) {
       const index = all().indexOf(item) + 1;
@@ -294,7 +295,7 @@ export function createEditor(container, { address, scope: opened = 'global', sta
     const busy = phase !== 'idle';
     panel.querySelectorAll('.row').forEach((row, index) => {
       const item = all()[index];
-      row.querySelector('input').disabled = busy || Boolean(item?.removed);
+      row.querySelector('textarea').disabled = busy || Boolean(item?.removed);
       row.querySelector('.network').disabled = busy;
       const remove = row.querySelector('.remove');
       if (remove) remove.disabled = busy;
@@ -333,13 +334,14 @@ export function createEditor(container, { address, scope: opened = 'global', sta
     get('.lines').classList.toggle('ranked', lines.length > 1);
     get('.lines').replaceChildren(...items.map((item, index) => {
       const row = element('div', undefined, { class: item === fresh ? 'row fresh' : 'row' });
-      // Search inputs are excluded by Bitwarden even when ignore hints are disabled.
-      // Keep the accessible role a textbox: this edits a tag, not a search query.
-      const input = element('input', undefined, { type: 'search', role: 'textbox', name: `0xtagger-tag-${index + 1}`, maxlength: MAX_TAG_LENGTH, 'aria-label': `Tag ${index + 1}`, autocomplete: 'off', 'data-bwignore': 'true', spellcheck: 'false' });
+      // A tag is one line of text, but a long one wraps so the whole name is
+      // always in view; Enter saves, so it never holds a line break.
+      const input = element('textarea', undefined, { rows: 1, name: `0xtagger-tag-${index + 1}`, maxlength: MAX_TAG_LENGTH, 'aria-label': `Tag ${index + 1}`, 'aria-multiline': 'false', autocomplete: 'off', 'data-bwignore': 'true', spellcheck: 'false' });
       if (item === fresh) input.placeholder = lines.length ? 'Add a tag' : 'Name this address';
       input.value = item.tag;
-      // Typing changes no panel geometry; avoid positioning/layout work per letter.
+      // A pasted line break becomes a space, in place, so the caret stays put.
       input.oninput = () => {
+        if (/[\r\n]/.test(input.value)) { const at = input.selectionStart; input.value = input.value.replace(/[\r\n]/g, ' '); input.setSelectionRange(at, at); }
         item.tag = input.value;
         showLine(item, row); if (item === fresh) attribution(); updateControls();
       };
@@ -387,6 +389,7 @@ export function createEditor(container, { address, scope: opened = 'global', sta
       // The tick that confirms a save, shown on the line's corner only then.
       const mark = element('span', undefined, { class: 'mark', 'aria-hidden': 'true' });
       row.append(input, network, mark);
+      wraps.observe(input);
       if (item !== fresh) {
         const remove = element('button', undefined, { type: 'button', class: 'quiet remove' });
         // A line never saved has nothing to keep: removing it is immediate.
@@ -403,7 +406,7 @@ export function createEditor(container, { address, scope: opened = 'global', sta
     attribution();
     queueMicrotask(onLayout);
     if (focusAt === null) return;
-    const input = panel.querySelectorAll('.row input')[focusAt];
+    const input = panel.querySelectorAll('.row textarea')[focusAt];
     if (input && !input.disabled) { input.focus(); if (typing) input.setSelectionRange(input.value.length, input.value.length); else input.select(); }
   }
 
@@ -540,7 +543,7 @@ export function createEditor(container, { address, scope: opened = 'global', sta
     if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); finish(); }
     // Enter saves every line with something to save, from a tag or from the
     // control that just marked one for removal; with nothing waiting, it closes.
-    if (event.isTrusted && event.key === 'Enter' && event.target.matches('.row input, .remove') && !event.isComposing) {
+    if (event.isTrusted && event.key === 'Enter' && event.target.matches('.row textarea, .remove') && !event.isComposing) {
       event.preventDefault(); event.stopPropagation();
       const waiting = all().filter(pending);
       // After "+", Enter keeps adding; naming a new address is usually one tag.
@@ -577,7 +580,7 @@ export function createEditor(container, { address, scope: opened = 'global', sta
         const held = next.records.filter(item => item.address === address);
         const same = held.length === seen.size && held.every(item => sameTags(item.tags, known(item.scope).tags) && (item.version || null) === known(item.scope).version);
         if (!same) {
-          const inputs = [...panel.querySelectorAll('.row input')];
+          const inputs = [...panel.querySelectorAll('.row textarea')];
           const here = inputs.indexOf(panel.getRootNode().activeElement);
           read(next);
           renderLines(here >= 0 ? here : null);

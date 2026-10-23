@@ -2,10 +2,10 @@
 :host { all: initial; font: 14px/1.45 system-ui, sans-serif; color: var(--0xtagger-ink); color-scheme: light; }
 :host([data-dark]) { color-scheme: dark; }
 * { box-sizing: border-box; }
-button,input { font: inherit; }
+button,input,textarea { font: inherit; }
 button { cursor: pointer; border: 0; border-radius: 6px; padding: 6px 10px; line-height: 1.2; font-weight: 700; }
 button:disabled { cursor: default; opacity: .45; }
-button:focus-visible,input:focus-visible { outline: 2px solid var(--0xtagger-accent); outline-offset: 2px; }
+button:focus-visible,input:focus-visible,textarea:focus-visible { outline: 2px solid var(--0xtagger-accent); outline-offset: 2px; }
 .quiet { color: var(--0xtagger-ink); background: transparent; }
 .quiet:hover { background: var(--0xtagger-soft); color: var(--0xtagger-ink); }
 .primary { background: var(--0xtagger-accent-fill); color: var(--0xtagger-on-accent); }
@@ -45,20 +45,22 @@ header .close { margin-left: auto; }
 [hidden] { display: none !important; }
 /* One line per tag: the tag, the network it is for, and its own Save. */
 .lines { display: grid; grid-template-columns: minmax(0, 1fr); gap: 3px; margin-top: 6px; }
-.row { position: relative; display: flex; align-items: center; gap: 3px; min-width: 0; height: 32px; padding: 0 3px 0 9px; border: 1px solid transparent; border-radius: 8px; background: var(--0xtagger-soft); }
+/* A long name wraps rather than hiding its end, and the line grows with it;
+   its handle keeps to the first line, its network to the last, where a
+   wrapped name has room to spare. */
+.row { position: relative; display: flex; align-items: flex-start; gap: 3px; min-width: 0; min-height: 32px; padding: 2px 3px 2px 9px; border: 1px solid transparent; border-radius: 8px; background: var(--0xtagger-soft); }
 .row:focus-within { border-color: var(--0xtagger-line); }
-.row input { flex: 1; min-width: 0; width: 0; color: var(--0xtagger-ink); background: transparent; border: 0; padding: 3px 0; font-size: 14px; line-height: 20px; font-weight: 400; text-overflow: ellipsis; }
+.row textarea { display: block; flex: 1; min-width: 0; width: 0; margin: 0; color: var(--0xtagger-ink); background: transparent; border: 0; padding: 3px 0; font-size: 14px; line-height: 20px; font-weight: 400; field-sizing: content; resize: none; overflow: hidden; overflow-wrap: anywhere; }
 /* The first line is the name pages show, so it stands a little forward. */
-.lines.ranked .row:first-child input { font-weight: 600; }
-.row input::placeholder { color: var(--0xtagger-muted); font-weight: 500; }
-.row input:focus-visible { outline: none; }
-.row input::-webkit-search-cancel-button { display: none; }
+.lines.ranked .row:first-child textarea { font-weight: 600; }
+.row textarea::placeholder { color: var(--0xtagger-muted); font-weight: 500; }
+.row textarea:focus-visible { outline: none; }
 /* The line for a new tag is drawn, not filled, until it holds one. */
 .row.fresh { border: 1px dashed var(--0xtagger-line); background: transparent; }
 .row.fresh:focus-within { border-style: solid; }
 /* Unsaved: tinted and outlined in the accent. Saved lines are plain. */
 .row.dirty { background: var(--0xtagger-accent-soft); border-style: solid; border-color: color-mix(in srgb, var(--0xtagger-accent) 35%, transparent); }
-.grip { display: flex; flex: none; margin: 0 1px 0 -5px; padding: 4px 2px; color: var(--0xtagger-muted); opacity: .45; cursor: grab; touch-action: none; }
+.grip { display: flex; flex: none; margin: 3px 1px 0 -5px; padding: 4px 2px; color: var(--0xtagger-muted); opacity: .45; cursor: grab; touch-action: none; }
 .grip:hover { opacity: 1; }
 .grip svg { width: 8px; height: 12px; }
 .row.dragging { opacity: .5; }
@@ -66,10 +68,10 @@ header .close { margin-left: auto; }
 /* Removed until saved: a red dashed outline, the name struck through, and
    "Undo" where the network was. */
 .row.removed { background: color-mix(in srgb, var(--0xtagger-error) 7%, transparent); border: 1px dashed color-mix(in srgb, var(--0xtagger-error) 55%, transparent); }
-.row.removed input { color: var(--0xtagger-muted); text-decoration: line-through; text-decoration-color: var(--0xtagger-error); }
+.row.removed textarea { color: var(--0xtagger-muted); text-decoration: line-through; text-decoration-color: var(--0xtagger-error); }
 .row.removed .network { display: none; }
 .row.removed .grip { visibility: hidden; }
-.row.removed .remove { position: static; width: auto; height: 24px; padding: 0 8px; border: 0; border-radius: 6px; color: var(--0xtagger-accent); background: transparent; box-shadow: none; font-size: 11.5px; font-weight: 650; opacity: 1; }
+.row.removed .remove { position: static; width: auto; height: 24px; margin-top: 1px; padding: 0 8px; border: 0; border-radius: 6px; color: var(--0xtagger-accent); background: transparent; box-shadow: none; font-size: 11.5px; font-weight: 650; opacity: 1; }
 .row.removed .remove:hover { background: var(--0xtagger-accent-soft); }
 /* Remove sits on the line's corner, out of the field, and only on hover. */
 .remove { position: absolute; top: -6px; right: -6px; z-index: 1; display: flex; align-items: center; justify-content: center; width: 17px; height: 17px; padding: 3px; border: 1px solid var(--0xtagger-line); border-radius: 50%; color: var(--0xtagger-muted); background: var(--0xtagger-panel); box-shadow: 0 1px 3px -1px rgba(0,0,0,.25); opacity: 0; transition: opacity 120ms ease; }
@@ -87,11 +89,11 @@ header .close { margin-left: auto; }
 .add svg { width: 14px; height: 14px; transition: transform 100ms ease-out; }
 .add:active svg { transform: scale(.82); transition-duration: 70ms; }
 /* Which network the tag is for, and the way to change it. */
-.network { display: flex; flex: none; align-items: center; gap: 4px; height: 24px; padding: 0 5px 0 4px; border-radius: 6px; color: var(--0xtagger-muted); background: var(--0xtagger-soft); font: 650 10.5px/1 system-ui, sans-serif; letter-spacing: .02em; white-space: nowrap; }
+.network { display: flex; flex: none; align-items: center; gap: 4px; height: 24px; align-self: flex-end; margin-bottom: 1px; padding: 0 5px 0 4px; border-radius: 6px; color: var(--0xtagger-muted); background: var(--0xtagger-soft); font: 650 10.5px/1 system-ui, sans-serif; letter-spacing: .02em; white-space: nowrap; }
 .row:not(.dirty,.fresh) .network { background: transparent; }
 /* All networks is the usual case and needs no saying; the chip is there on
    hover or focus for the line that should be for one chain. */
-.row:not(.fresh) .network.everywhere { position: absolute; top: 50%; right: 3px; transform: translateY(-50%); z-index: 1; background: var(--0xtagger-panel); box-shadow: -12px 0 10px -4px var(--0xtagger-panel); transition: opacity 120ms ease; }
+.row:not(.fresh) .network.everywhere { position: absolute; bottom: 3px; right: 3px; margin: 0; z-index: 1; background: var(--0xtagger-panel); box-shadow: -12px 0 10px -4px var(--0xtagger-panel); transition: opacity 120ms ease; }
 .row:not(.fresh,:hover,:focus-within) .network.everywhere { opacity: 0; }
 .network:hover,.network[aria-expanded="true"] { color: var(--0xtagger-ink); }
 .network > svg { flex: none; width: 8px; height: 8px; opacity: .7; }
@@ -118,9 +120,9 @@ header .close { margin-left: auto; }
 .extras:not(:has(> :not([hidden]))) { display: none; }
 .notice,.offer { font-size: 11px; margin: 8px 0 0; overflow-wrap: anywhere; }
 /* Whose words are in the field, said beside them and never saved with them.
-   It shrinks before the tag does, so a long name scrolls rather than fighting
+   It holds its width, and a long name wraps beside it rather than fighting
    it for room. */
-.row .from { flex-shrink: 0; margin-right: 2px; color: var(--0xtagger-muted); font-size: 10px; font-weight: 600; white-space: nowrap; }
+.row .from { flex-shrink: 0; margin: 6px 2px 0 0; color: var(--0xtagger-muted); font-size: 10px; font-weight: 600; white-space: nowrap; }
 /* What a site calls an address you have already named: available, never loud. */
 .offer { display: flex; align-items: baseline; gap: 8px; color: var(--0xtagger-muted); }
 .offer span { overflow-wrap: anywhere; }

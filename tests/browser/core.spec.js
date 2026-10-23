@@ -58,7 +58,7 @@ test('each tag line has its own network, and moving one saves both lists', async
   await edit(page).click();
   const dialog = page.getByRole('dialog');
   const menu = page.getByRole('listbox', { name: 'Save for' });
-  expect(await dialog.locator('.row input').evaluateAll(inputs => inputs.map(input => input.value))).toEqual(['Treasury', 'Operations', 'Base vault']);
+  expect(await dialog.locator('.row textarea').evaluateAll(inputs => inputs.map(input => input.value))).toEqual(['Treasury', 'Operations', 'Base vault']);
   await expect(dialog.locator('.save-scope')).toHaveText(['All networks', 'All networks', 'Base']);
   await expect(dialog.locator('.row.dirty')).toHaveCount(0);
   await dialog.locator('.network').nth(1).click();
@@ -74,7 +74,7 @@ test('each tag line has its own network, and moving one saves both lists', async
   await expect(dialog.getByRole('button', { name: 'Add tag', exact: true })).toBeHidden();
   await dialog.locator('.network').nth(3).click();
   await menu.getByRole('option', { name: /Base/ }).click();
-  await dialog.locator('.row input').nth(3).fill('Base router');
+  await dialog.locator('.row textarea').nth(3).fill('Base router');
   await expect(dialog.locator('.row.dirty')).toHaveCount(2);
   await submit(page);
   await expect(dialog).toHaveCount(0);
@@ -93,7 +93,7 @@ test('dragging a tag by its handle reorders its network, waiting for Save', asyn
   await edit(page).click();
   const dialog = page.getByRole('dialog');
   await dialog.locator('.row').nth(1).locator('.grip').dragTo(dialog.locator('.row').nth(0), { targetPosition: { x: 40, y: 4 } });
-  expect(await dialog.locator('.row input').evaluateAll(inputs => inputs.map(input => input.value))).toEqual(['Operations', 'Treasury']);
+  expect(await dialog.locator('.row textarea').evaluateAll(inputs => inputs.map(input => input.value))).toEqual(['Operations', 'Treasury']);
   await expect(dialog.locator('.row.dirty')).toHaveCount(2);
   await submit(page);
   await expect(dialog).toHaveCount(0);
@@ -106,8 +106,8 @@ test('after "+", Enter saves the new tag and opens the next blank; Enter on that
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: 'Add tag', exact: true }).click();
   await expect(dialog.locator('.row.fresh .save-scope')).toHaveText('All networks');
-  await dialog.locator('.row.fresh input').fill('Third');
-  await dialog.locator('.row.fresh input').press('Enter');
+  await dialog.locator('.row.fresh textarea').fill('Third');
+  await dialog.locator('.row.fresh textarea').press('Enter');
   await expect(page.getByRole('textbox', { name: 'Tag 4', exact: true })).toBeFocused();
   expect(await page.evaluate(() => window.saves)).toEqual([expect.objectContaining({ scope: 'global', tags: ['Treasury', 'Operations', 'Third'] })]);
   await page.getByRole('textbox', { name: 'Tag 4', exact: true }).press('Enter');
@@ -664,7 +664,7 @@ test.describe('a name the website already shows', () => {
     // store. Whose words they are is said beside them, never on its own line.
     await expect(fromSite(page)).toHaveText('(from Etherscan)');
     const [ink, plain] = await page.getByRole('dialog').evaluate(panel => [
-      getComputedStyle(panel.querySelector('.row input')).color,
+      getComputedStyle(panel.querySelector('.row textarea')).color,
       getComputedStyle(panel).color]);
     expect(ink).toBe(plain);
     // Selected, so typing replaces it rather than appending to it.
