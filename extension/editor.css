@@ -43,34 +43,27 @@ dialog.editor::backdrop { background: var(--0xtagger-backdrop); backdrop-filter:
 .source:empty { display: none; }
 header .close { margin-left: auto; }
 [hidden] { display: none !important; }
-/* One field holds the tag a page shows, the network it is for, and Save. */
-.main { display: flex; align-items: center; gap: 3px; height: 38px; margin-top: 8px; padding: 0 4px 0 9px; border: 1px solid transparent; border-radius: 9px; background: var(--0xtagger-soft); }
-.main:focus-within { border-color: var(--0xtagger-accent); background: transparent; }
-.lead { display: flex; flex: 1; min-width: 0; }
-.row { display: flex; flex: 1; align-items: center; min-width: 0; gap: 3px; }
-.row input { flex: 1; min-width: 0; width: 0; color: var(--0xtagger-ink); background: transparent; border: 0; padding: 3px 0; font-size: 14.5px; line-height: 20px; font-weight: 700; }
+/* One line per tag: the tag, the network it is for, and its own Save. */
+.lines { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; margin-top: 8px; }
+.row { position: relative; display: flex; align-items: center; gap: 3px; min-width: 0; height: 36px; padding: 0 4px 0 10px; border: 1px solid transparent; border-radius: 8px; background: var(--0xtagger-soft); }
+.row:focus-within { border-color: var(--0xtagger-line); }
+.row input { flex: 1; min-width: 0; width: 0; color: var(--0xtagger-ink); background: transparent; border: 0; padding: 3px 0; font-size: 14px; line-height: 20px; font-weight: 650; }
 .row input::placeholder { color: var(--0xtagger-muted); font-weight: 500; }
 .row input:focus-visible { outline: none; }
 .row input::-webkit-search-cancel-button { display: none; }
-/* Other names: quieter lines under the field. */
-.rows { display: grid; gap: 0; margin-top: 2px; }
-.rows:empty { display: none; }
-.alias { height: 28px; padding: 0 4px 0 10px; border-radius: 7px; }
-.alias:focus-within { background: var(--0xtagger-soft); }
-.alias input { font-size: 12.5px; font-weight: 600; }
-.aka { flex: none; width: 26px; color: var(--0xtagger-muted); font-size: 9.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
-.rank { display: flex; flex-shrink: 0; align-items: center; gap: 1px; }
-.rank button { display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 5px; color: var(--0xtagger-muted); }
-.rank button svg { width: 12px; height: 12px; }
-/* Row controls stay out of the way until the row is pointed at or in use. */
-.rank { opacity: 0; transition: opacity 120ms ease; }
-.row:is(:hover,:focus-within) .rank { opacity: 1; }
-.lead .row:has(input:placeholder-shown) .rank { display: none; }
-.add { display: flex; align-items: center; justify-content: center; flex: none; width: 24px; height: 24px; padding: 6px; color: var(--0xtagger-muted); }
-.add svg { width: 12px; height: 12px; }
-/* Which network the list is for, and the way to change it. */
-.scope { display: flex; flex: none; }
-.network { display: flex; align-items: center; gap: 4px; height: 24px; padding: 0 5px 0 4px; border-radius: 6px; color: var(--0xtagger-muted); background: var(--0xtagger-soft); font: 650 10.5px/1 system-ui, sans-serif; letter-spacing: .02em; white-space: nowrap; }
+/* The line for a new tag is drawn, not filled, until it holds one. */
+.row.fresh { padding-right: 29px; border: 1px dashed var(--0xtagger-line); background: transparent; }
+.row.fresh:focus-within { border-style: solid; }
+/* Unsaved: tinted, with an accent edge, and its Save lit. Saved lines are plain. */
+.row.dirty { background: var(--0xtagger-accent-soft); border-style: solid; border-color: transparent; }
+.row.dirty::before { content: ""; position: absolute; left: -1px; top: 6px; bottom: 6px; width: 3px; border-radius: 0 3px 3px 0; background: var(--0xtagger-accent); }
+.row.removed input { color: var(--0xtagger-muted); text-decoration: line-through; }
+.remove { display: flex; align-items: center; justify-content: center; flex: none; width: 22px; height: 22px; padding: 5px; color: var(--0xtagger-muted); opacity: 0; transition: opacity 120ms ease; }
+.remove svg { width: 12px; height: 12px; }
+.row:is(:hover,:focus-within,.removed) .remove { opacity: 1; }
+/* Which network the tag is for, and the way to change it. */
+.network { display: flex; flex: none; align-items: center; gap: 4px; height: 24px; padding: 0 5px 0 4px; border-radius: 6px; color: var(--0xtagger-muted); background: var(--0xtagger-soft); font: 650 10.5px/1 system-ui, sans-serif; letter-spacing: .02em; white-space: nowrap; }
+.row:not(.dirty,.fresh) .network { background: transparent; }
 .network:hover,.network[aria-expanded="true"] { color: var(--0xtagger-ink); }
 .network > svg { flex: none; width: 8px; height: 8px; opacity: .7; }
 .network-mark { display: flex; flex: none; }
@@ -86,18 +79,18 @@ header .close { margin-left: auto; }
 .networks .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .networks .own { flex: none; width: 5px; height: 5px; border-radius: 50%; background: var(--0xtagger-accent); }
 .networks .symbol { color: var(--0xtagger-muted); font: 600 10px ui-monospace, monospace; }
-/* Save waits quietly until there is something to save, then lights up. */
-.save { display: flex; align-items: center; justify-content: center; flex: none; width: 28px; height: 28px; padding: 0; border: 1px solid var(--0xtagger-line); border-radius: 7px; color: var(--0xtagger-muted); background: transparent; transition: box-shadow 150ms ease, transform 100ms ease-out, filter 120ms ease; }
+/* Save shows only on a line with something to save, filled and lit from
+   above: a soft sheen, a hairline of light on its top edge, and a shadow in
+   its own colour. A press settles it into the panel. */
+.save { display: flex; align-items: center; justify-content: center; flex: none; width: 26px; height: 26px; padding: 0; border-radius: 7px; color: var(--0xtagger-on-accent); background: var(--0xtagger-accent-fill) linear-gradient(to bottom, color-mix(in srgb, white 14%, transparent), transparent 60%); box-shadow: inset 0 1px 0 color-mix(in srgb, white 22%, transparent), 0 1px 2px var(--0xtagger-accent-pulse), 0 4px 10px -4px var(--0xtagger-accent-glow); transition: box-shadow 150ms ease, transform 100ms ease-out, filter 120ms ease; }
 .save svg { width: 14px; height: 14px; }
-/* Lit from above: a soft sheen on the fill, a hairline of light on its top
-   edge, and a shadow in its own colour. A press settles it into the panel. */
-.save:is(.live,.confirmed) { border-color: transparent; color: var(--0xtagger-on-accent); background: var(--0xtagger-accent-fill) linear-gradient(to bottom, color-mix(in srgb, white 14%, transparent), transparent 60%); box-shadow: inset 0 1px 0 color-mix(in srgb, white 22%, transparent), 0 1px 2px var(--0xtagger-accent-pulse), 0 4px 10px -4px var(--0xtagger-accent-glow); }
-.save:not(:disabled):hover { filter: brightness(1.1); }
-.save:not(:disabled):active { transform: scale(.92); transition-duration: 60ms; }
-@media (prefers-reduced-motion: reduce) { .save { transition: none; } .save:not(:disabled):active { transform: none; } }
-.extras { display: flex; margin-top: 6px; }
-.preview,.notice,.offer { font-size: 11px; margin: 8px 0 0; overflow-wrap: anywhere; }
-.preview { color: var(--0xtagger-muted); }
+.save:not(:disabled):hover,.save-all:not(:disabled):hover { filter: brightness(1.1); }
+.save:not(:disabled):active,.save-all:not(:disabled):active { transform: scale(.94); transition-duration: 60ms; }
+@media (prefers-reduced-motion: reduce) { .save,.save-all { transition: none; } .save:not(:disabled):active,.save-all:not(:disabled):active { transform: none; } }
+.extras { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; }
+.extras:not(:has(> :not([hidden]))) { display: none; }
+.save-all { margin-left: auto; padding: 6px 11px; border-radius: 7px; font-size: 12px; background: var(--0xtagger-accent-fill) linear-gradient(to bottom, color-mix(in srgb, white 14%, transparent), transparent 60%); box-shadow: inset 0 1px 0 color-mix(in srgb, white 22%, transparent), 0 1px 2px var(--0xtagger-accent-pulse); transition: transform 100ms ease-out, filter 120ms ease; }
+.notice,.offer { font-size: 11px; margin: 8px 0 0; overflow-wrap: anywhere; }
 /* Whose words are in the field, said beside them and never saved with them.
    It shrinks before the tag does, so a long name scrolls rather than fighting
    it for room. */

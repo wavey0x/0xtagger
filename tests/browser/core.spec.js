@@ -28,7 +28,7 @@ test('500 addresses retain native text, navigation, selection and copying; disab
 test('switching addresses preserves unsaved edits; ranking and Enter save the captured list', async ({ page }) => {
   await start(page);
   await edit(page).click();
-  await expect(page.getByRole('dialog').locator('.save-scope')).toHaveText('All networks');
+  await expect(page.getByRole('dialog').locator('.save-scope').first()).toHaveText('All networks');
   await edit(page, 1).click(); // An untouched editor can be replaced.
   await expect(shownAddress(page)).toHaveText(checksumAddress(other));
   await input(page).fill('Unsaved');
@@ -46,33 +46,46 @@ test('switching addresses preserves unsaved edits; ranking and Enter save the ca
   expect(await page.evaluate(() => window.saves[0])).toMatchObject({ address, scope: 'global', tags: ['Operations desk', 'Treasury'], version: 'one' });
 });
 
-// An address can be a different contract on another chain, so each network
-// keeps its own list. Moving to one reads its list; one with none starts from
-// the list for all networks, and the save is for that network alone.
-test('the network menu edits one network\'s list and saves to it', async ({ page }) => {
+// An address can be a different contract on another chain, so each tag
+// carries the network it is for. A network's own tags show as their own lines,
+// and moving a tag to another network writes both lists.
+test('each tag line has its own network, and moving one saves both lists', async ({ page }) => {
   await start(page, { records: [record, { address, scope: 'eip155:8453', tags: ['Base vault'], version: 'base' }] });
   await edit(page).click();
+  const dialog = page.getByRole('dialog');
   const menu = page.getByRole('listbox', { name: 'Save for' });
-  await page.getByRole('dialog').locator('.network').click();
+  expect(await dialog.locator('.row input').evaluateAll(inputs => inputs.map(input => input.value))).toEqual(['Treasury', 'Operations', 'Base vault', '']);
+  await expect(dialog.locator('.save-scope')).toHaveText(['All networks', 'All networks', 'Base', 'All networks']);
+  await expect(save(page)).toHaveCount(0);
+  await dialog.locator('.network').nth(1).click();
   await expect(menu.getByRole('option', { name: /Base/ })).toHaveAttribute('title', 'Base vault');
-  await menu.getByRole('option', { name: /Base/ }).click();
-  await expect(menu).toBeHidden();
-  await expect(page.getByRole('dialog').locator('.save-scope')).toHaveText('Base');
-  await expect(input(page)).toHaveValue('Base vault');
-  await page.getByRole('dialog').locator('.network').click();
   await menu.getByRole('option', { name: /Arbitrum/ }).focus();
   await page.keyboard.press('Enter');
-  await expect(input(page)).toHaveValue('Treasury');
-  await input(page).fill('Arbitrum treasury');
-  await save(page).click();
-  await expect.poll(() => page.evaluate(() => window.saves.at(-1)))
-    .toMatchObject({ address, scope: 'eip155:42161', tags: ['Arbitrum treasury', 'Operations'], version: null });
+  await expect(menu).toBeHidden();
+  await expect(dialog.locator('.save-scope').nth(1)).toHaveText('Arbitrum');
+  await expect(dialog.locator('.row').nth(1)).toHaveClass(/dirty/);
+  await expect(dialog.locator('.row').nth(0)).not.toHaveClass(/dirty/);
+  // The new line picks its own network too.
+  await dialog.locator('.network').nth(3).click();
+  await menu.getByRole('option', { name: /Base/ }).click();
+  await dialog.locator('.row input').nth(3).fill('Base router');
+  await expect(page.getByRole('button', { name: 'Save all 2' })).toBeVisible();
+  await page.getByRole('button', { name: 'Save all 2' }).click();
+  await expect(dialog).toHaveCount(0);
+  const saves = await page.evaluate(() => window.saves);
+  expect(saves).toHaveLength(3);
+  expect(saves).toEqual(expect.arrayContaining([
+    expect.objectContaining({ scope: 'global', tags: ['Treasury'], version: 'one' }),
+    expect.objectContaining({ scope: 'eip155:42161', tags: ['Operations'], version: null }),
+    expect.objectContaining({ scope: 'eip155:8453', tags: ['Base vault', 'Base router'], version: 'base' }),
+  ]));
 });
 
 test('a pending save sends one write and its late completion cannot close a newer draft', async ({ page }) => {
   await start(page);
   await edit(page).click();
   await page.evaluate(() => { window.saveGate = new Promise(resolve => { window.releaseSave = resolve; }); });
+  await input(page).fill('First draft');
   await save(page).click();
   await expect(input(page)).toBeDisabled();
   await page.locator('body > header').click();
@@ -254,8 +267,9 @@ test('failed and conflicting saves retain the draft; a refusal offers both answe
   await expect(input(page)).toHaveValue('Newer name');
   await expect(page.locator('.conflict')).toBeHidden();
   await page.evaluate(() => { window.saveError=null; });
+  await input(page).fill('Newer name, mine');
   await save(page).click();
-  expect(await page.evaluate(() => window.saves.at(-1))).toMatchObject({ address, tags: ['Newer name'], version: 'newer' });
+  await expect.poll(() => page.evaluate(() => window.saves.at(-1))).toMatchObject({ address, tags: ['Newer name, mine'], version: 'newer' });
 });
 
 test('a stray space is not an edit, and a link that names nothing opens nothing', async ({ page }) => {
@@ -293,8 +307,9 @@ test('a draft nobody has touched follows the book; one with typing in it is neve
   await expect(page.locator('#first')).toHaveAttribute('data-0xtagger-tag', 'Saved in another tab');
   // Saving the followed draft carries that record's version, so a book written
   // elsewhere is not asked to resolve a conflict that no longer exists.
+  await input(page).fill('Saved here');
   await save(page).click();
-  expect(await page.evaluate(() => window.saves.at(-1))).toMatchObject({ tags: ['Saved in another tab'], version: 'from-elsewhere-Saved in another tab' });
+  await expect.poll(() => page.evaluate(() => window.saves.at(-1))).toMatchObject({ tags: ['Saved here'], version: 'from-elsewhere-Saved in another tab' });
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
   await edit(page).click();
@@ -800,7 +815,7 @@ test('a filled control writes in white, on a purple dark enough to carry it', as
     await tagFor(page, 'first').click();
     // Save is filled once there is something to save.
     await input(page).fill('Treasury rename');
-    const button = page.getByRole('dialog').locator('.save');
+    const button = save(page);
     const [ink, fill] = await button.evaluate(node =>
       [getComputedStyle(node).color, getComputedStyle(node).backgroundColor]);
     expect(ink, `${scheme}: a filled control writes in white`).toBe('rgb(255, 255, 255)');
@@ -816,7 +831,7 @@ test('the saved tick is drawn in the colour the button writes in', async ({ page
   await tagFor(page, 'first').click();
   await input(page).fill('Treasury rename');
   await save(page).click();
-  const stroke = page.getByRole('dialog').locator('.save svg path');
+  const stroke = page.getByRole('dialog').locator('.save.confirmed svg path');
   await expect(stroke).toHaveAttribute('stroke-dasharray', '14.2');
   const [drawn, ink] = await stroke.evaluate(node =>
     [getComputedStyle(node).stroke, getComputedStyle(node.closest('button')).color]);
@@ -825,7 +840,7 @@ test('the saved tick is drawn in the colour the button writes in', async ({ page
   // The button is held shut while it confirms, and a faded fill would leave
   // the tick with nothing to be read against — a declared colour says 5:1
   // while the eye sees the panel behind it.
-  const [fill, faded] = await page.getByRole('dialog').locator('.save')
+  const [fill, faded] = await page.getByRole('dialog').locator('.save.confirmed')
     .evaluate(node => [getComputedStyle(node).backgroundColor, getComputedStyle(node).opacity]);
   expect(faded, 'a confirming button is locked, not faded').toBe('1');
   expect(contrast(drawn, fill)).toBeGreaterThanOrEqual(3);

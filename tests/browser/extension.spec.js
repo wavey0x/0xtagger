@@ -288,9 +288,9 @@ test('installed extension: a book that works with no setup, moving it to a serve
     await expect(book.getByRole('textbox', { name: 'Tag 1' })).toHaveValue('New Base wallet');
     await switchTo('Local');
     await expect(book.getByRole('button', { name: 'Save', exact: true })).toBeEnabled();
-    await book.getByRole('button',{name:'Add tag',exact:false}).click();
+    // A typed tag gets a new line under it for the next, and both save together.
     await book.getByRole('textbox',{name:'Tag 2'}).fill('Second alias');
-    await book.getByRole('textbox',{name:'Tag 2'}).press('Enter');
+    await book.getByRole('button',{name:'Save all 2',exact:true}).click();
     await expect(book.getByRole('dialog')).toHaveCount(0);
     const addedRecord=(await (await api.get(local+'/tags')).json()).records.find(record=>record.address===added);
     expect(addedRecord).toMatchObject({address:added,scope:'eip155:8453',tags:['New Base wallet','Second alias']});
@@ -321,7 +321,7 @@ test('installed extension: a book that works with no setup, moving it to a serve
     await book.locator('.record').click();
     await book.getByRole('button', { name: 'Remove tags', exact: true }).click();
     expect((await (await api.get(local+'/tags')).json()).records).toContainEqual(addedRecord);
-    await book.getByRole('button', { name: 'Save', exact: true }).click();
+    await book.getByRole('button', { name: 'Save all 2', exact: true }).click();
     await expect(book.getByRole('dialog')).toHaveCount(0);
     expect((await (await api.get(local+'/tags')).json()).records.some(record=>record.address===added)).toBe(false);
     await popup.getByRole('button', { name: 'Open address book', exact: false }).click();
@@ -462,7 +462,7 @@ test('popup finder searches, copies and adds an address in a chosen scope', asyn
     await popup.getByRole('combobox', { name: 'Where new tags apply' }).selectOption('eip155:8453');
     await popup.getByRole('button', { name: 'Add tags' }).click();
     await expect(popup.locator('#home')).toBeHidden();
-    await expect(popup.locator('#editor-host .save-scope')).toHaveText('Base');
+    await expect(popup.locator('#editor-host .save-scope').first()).toHaveText('Base');
     await popup.getByRole('textbox', { name: 'Tag 1' }).fill('Base payroll');
     await popup.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(popup.locator('#home')).toBeVisible();
@@ -505,10 +505,10 @@ test('popup finder searches, copies and adds an address in a chosen scope', asyn
     await expect(popup.locator('#lookup-result .lookup-item').nth(1).locator('small')).toHaveText('Base');
     await expect(popup.locator('#lookup-result .more-count')).toHaveText('+1');
     await popup.locator('#lookup-result .lookup-item').first().click();
-    await expect(popup.locator('#editor-host .save-scope')).toHaveText('All networks');
+    await expect(popup.locator('#editor-host .save-scope').first()).toHaveText('All networks');
     await popup.getByRole('button', { name: 'Close editor' }).click();
     await popup.locator('#lookup-result .lookup-item').nth(1).click();
-    await expect(popup.locator('#editor-host .save-scope')).toHaveText('Base');
+    await expect(popup.locator('#editor-host .save-scope').first()).toHaveText('Base');
     await popup.getByRole('button', { name: 'Close editor' }).click();
     await lookup.fill('Universal');
     await expect(popup.locator('#lookup-result .lookup-item')).toHaveCount(1);
@@ -526,7 +526,7 @@ test('popup finder searches, copies and adds an address in a chosen scope', asyn
     await expect(popup.locator('.lookup-error')).toContainText('known network');
     await popup.getByRole('textbox', { name: 'Chain ID' }).fill('42170');
     await popup.getByRole('button', { name: 'Add tags' }).click();
-    await expect(popup.locator('#editor-host .save-scope')).toHaveText('Chain 42170');
+    await expect(popup.locator('#editor-host .save-scope').first()).toHaveText('Chain 42170');
     await popup.getByRole('textbox', { name: 'Tag 1' }).fill('Custom chain');
     await popup.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(popup.locator('#lookup-result .lookup-item')).toContainText('Chain 42170');
