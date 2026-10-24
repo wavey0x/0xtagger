@@ -136,10 +136,27 @@ export function createEditor(container, { address, scope: opened = 'global', sta
   // Dismiss before the browser focuses the clicked website control. The
   // composed path distinguishes panel content across its shadow boundary.
   panel.ownerDocument.addEventListener('pointerdown', outside, true);
+  // A click in another frame of the page never reaches this document: an
+  // explorer's tables are frames of their own, and the editor can be in one
+  // or above one. Focus leaving for that frame is the click away. Focus
+  // leaving the browser altogether is not, so switching apps keeps the draft.
+  const view = panel.ownerDocument.defaultView;
+  function blurred(event) {
+    if (event.target !== view) return;
+    setTimeout(() => {
+      if (closed) return;
+      const held = panel.ownerDocument.activeElement;
+      let elsewhere = /^I?FRAME$/.test(held?.tagName || '');
+      if (!elsewhere && view.top !== view) { try { elsewhere = view.top.document.hasFocus(); } catch {} }
+      if (elsewhere) { closeMenu(); leave(true); }
+    });
+  }
+  view.addEventListener('blur', blurred);
   function finish() {
     if (!closed) {
       closed = true;
       panel.ownerDocument.removeEventListener('pointerdown', outside, true);
+      view.removeEventListener('blur', blurred);
       closeMenu();
       if (modal) panel.close();
       close();

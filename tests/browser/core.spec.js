@@ -161,6 +161,37 @@ test('clicking away saves the draft and preserves native focus and copy actions'
   expect(await page.evaluate(() => window.saves.length)).toBe(1);
 });
 
+test('a click into another frame of the page counts as clicking away, whichever side the editor is on', async ({ page }) => {
+  // The editor above a frame: the click lands in the frame, never this document.
+  await start(page, { html: `${wallets}<div style="height:400px"></div><iframe id="embedded" srcdoc="<p id=inside>Embedded rows</p>"></iframe>` });
+  await edit(page).click();
+  await input(page).fill('Kept from the frame');
+  await page.frameLocator('#embedded').locator('#inside').click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await page.evaluate(() => window.saves)).toEqual([expect.objectContaining({ address, tags: ['Kept from the frame', 'Operations'] })]);
+
+  // The editor inside a frame: the click lands on the page around it.
+  await page.goto('/tests/fixtures/page.html');
+  await page.setContent('<header>Explorer</header><main><p id="outer">Around the table</p><iframe id="table" name="table" src="/tests/fixtures/page.html" style="width:600px;height:300px"></iframe></main>');
+  const frame = page.frame({ name: 'table' });
+  await frame.waitForLoadState();
+  await frame.evaluate(async ({ address, record }) => {
+    document.body.innerHTML = `<div class="table-responsive"><table><tbody><tr><td><a href="/address/${address}">${address}</a></td></tr></tbody></table></div>`;
+    for (const sheet of ['colors.css', 'page.css']) document.head.append(Object.assign(document.createElement('link'), { rel: 'stylesheet', href: `/extension/${sheet}` }));
+    const { createPageController } = await import('/extension/page.js');
+    window.saves = [];
+    window.controller = await createPageController({ framed: true, url: () => new URL('https://etherscan.io/accounts'), report: () => {},
+      state: { books: [{ id: 'book-1', name: 'default', where: 'On this device' }], activeBook: 'book-1', bookName: 'default', bookKind: 'device', stateRevision: 1, records: [record] },
+      save: async draft => { window.saves.push(draft); return {}; } });
+  }, { address, record });
+  const inner = page.frameLocator('#table');
+  await inner.getByRole('button', { name: 'Edit wallet tags', exact: true }).first().click();
+  await inner.getByRole('textbox', { name: 'Tag 1', exact: true }).fill('Kept from the page');
+  await page.locator('#outer').click();
+  await expect(inner.getByRole('dialog')).toHaveCount(0);
+  expect(await frame.evaluate(() => window.saves)).toEqual([expect.objectContaining({ address, tags: ['Kept from the page', 'Operations'] })]);
+});
+
 test('Cancel shows only with unsaved changes and leaves without saving', async ({ page }) => {
   await start(page);
   await edit(page).click();
