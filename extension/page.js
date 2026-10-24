@@ -46,7 +46,10 @@ export async function createPageController({
 
   const overlay = await createOverlay(doc, win);
   // Keep the editor beside the row it belongs to, while there still is one.
-  const position = (fit = false) => { if (editor) overlay.position(editorTarget?.element, fit); };
+  // The editor sits by the tag that opened it, which on a long row can be far
+  // from where the address starts.
+  const tagOf = target => (target && targets.get(target.element))?.editButton || target?.editButton;
+  const position = (fit = false) => { if (editor) overlay.position(editorTarget?.element, fit, tagOf(editorTarget)); };
   const abort = new AbortController();
   const listen = (target, type, callback, options = {}) => target.addEventListener(type, callback, { ...options, signal: abort.signal });
 
@@ -446,7 +449,7 @@ export async function createPageController({
 
   async function open(target) {
     if (!target) return;
-    if (editor && editorTarget?.address === target.address && editorTarget.network === target.network &&
+    if (editor && !editor.confirming && editorTarget?.address === target.address && editorTarget.network === target.network &&
         editorTarget.book === state.activeBook) {
       editorTarget = { ...target, book: state.activeBook };
       position(true); editor.focus();

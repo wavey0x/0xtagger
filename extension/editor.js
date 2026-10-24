@@ -556,10 +556,14 @@ export function createEditor(container, { address, scope: opened = 'global', sta
   renderLines();
   return {
     focus, updateVisibility,
+    // Saved and showing its tick: about to close, so opening its tag again
+    // starts a fresh editor rather than focusing this one.
+    get confirming() { return phase === 'saved'; },
     // Opening another address is leaving this one: its draft is saved first.
-    // While a save is under way, or one cannot be made, the draft stays open.
+    // A draft that cannot be saved here stays open.
     async closeIfUnchanged() {
-      if (phase === 'idle' && (!edited() || activeState.activeBook === book) && await leave(true)) return true;
+      // A save already sent (or confirming) needs nothing more from this view.
+      if ((phase !== 'idle' || !edited() || activeState.activeBook === book) && await leave(true)) return true;
       if (!closed) {
         pageNotice = 'Save or close this draft to edit another address.';
         guard(); focus();

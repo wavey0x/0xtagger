@@ -114,6 +114,17 @@ test('after "+", Enter saves the new tag and opens the next blank; Enter on that
   await expect(dialog).toHaveCount(0);
 });
 
+test('a tag clicked while the last save is still confirming opens a fresh editor', async ({ page }) => {
+  await start(page);
+  await edit(page).click();
+  await input(page).fill('Renamed');
+  await input(page).press('Enter');
+  await edit(page).click();
+  await expect(input(page)).toBeEnabled();
+  await input(page).fill('Renamed again');
+  await expect(input(page)).toHaveValue('Renamed again');
+});
+
 test('a pending save sends one write and its late completion cannot close a newer draft', async ({ page }) => {
   await start(page);
   await edit(page).click();

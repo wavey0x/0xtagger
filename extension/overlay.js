@@ -61,7 +61,7 @@ export async function createOverlay(doc, win) {
       box.style.display = 'none';
     },
     // Keep the editor beside `element`, or merely on screen once its row is gone.
-    position(element, fit = false) {
+    position(element, fit = false, tag = null) {
       const size = box.getBoundingClientRect();
       if (!element?.isConnected) {
         box.style.position = 'fixed';
@@ -74,7 +74,11 @@ export async function createOverlay(doc, win) {
       const next = { left: rect.left + win.scrollX, bottom: rect.bottom + win.scrollY, width: size.width, height: size.height };
       box.style.position = 'absolute';
       if (fit || !anchor || size.width !== anchor.width || size.height !== anchor.height) {
-        box.style.left = `${win.scrollX + Math.max(10, Math.min(win.innerWidth - size.width - 10, rect.left))}px`;
+        // It hangs from the tag's left, just below it: close to where the eye
+        // already is, while the tags of the rows below stay clear to click.
+        // With no room on that side it starts where the address does.
+        const beside = tag?.isConnected ? tag.getBoundingClientRect().left - 4 - size.width : -1;
+        box.style.left = `${win.scrollX + Math.max(10, Math.min(win.innerWidth - size.width - 10, beside >= rect.left ? beside : rect.left))}px`;
         const below = rect.bottom + 8;
         box.style.top = `${win.scrollY + Math.max(10, Math.min(win.innerHeight - size.height - 10, below + size.height < win.innerHeight ? below : rect.top - size.height - 8))}px`;
       } else {
