@@ -89,6 +89,25 @@ test('each tag line has its own network, and moving one saves both lists', async
   ]));
 });
 
+// Moving a page's only tag to another network never shows the address bare.
+test('moving the only tag to another network writes the new list first, so the page keeps its name', async ({ page }) => {
+  await start(page, { records: [{ address, scope: 'global', tags: ['CRV'], version: 'one' }] });
+  await expect(page.locator('#first')).toHaveAttribute('data-0xtagger-tag', 'CRV');
+  await page.evaluate(() => {
+    window.painted = [];
+    new MutationObserver(() => window.painted.push(document.querySelector('#first').getAttribute('data-0xtagger-tag')))
+      .observe(document.querySelector('#first'), { attributes: true, attributeFilter: ['data-0xtagger-tag'] });
+  });
+  await edit(page).click();
+  await page.getByRole('dialog').locator('.network').first().click();
+  await page.getByRole('listbox', { name: 'Save for' }).getByRole('option', { name: /Ethereum/ }).click();
+  await page.locator('body > header').click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect((await page.evaluate(() => window.saves)).map(save => [save.scope, save.tags])).toEqual([['eip155:1', ['CRV']], ['global', []]]);
+  expect(await page.evaluate(() => window.painted)).not.toContain(null);
+  await expect(page.locator('#first')).toHaveAttribute('data-0xtagger-tag', 'CRV');
+});
+
 // Order is priority: the first tag for a network is the one a page shows.
 test('dragging a tag by its handle reorders its network, waiting for Save', async ({ page }) => {
   await start(page);

@@ -443,7 +443,12 @@ export function createEditor(container, { address, scope: opened = 'global', sta
       const now = chosen.includes(item) ? (item.removed || !item.tag.trim() ? null : { tag: item.tag.trim(), scope: item.scope }) : item.saved;
       if (now && lists.has(now.scope)) lists.get(now.scope).push(now.tag);
     }
-    return [...lists].filter(([scope, tags]) => !sameTags(tags, known(scope).tags)).map(([scope, tags]) => ({ scope, tags }));
+    // A tag moving to another network is written where it is going before it
+    // is taken from where it was, so the page never shows the address bare in
+    // between, and a save cut short leaves it in both lists rather than neither.
+    return [...lists].filter(([scope, tags]) => !sameTags(tags, known(scope).tags))
+      .sort(([, one], [, two]) => (one.length ? 0 : 1) - (two.length ? 0 : 1))
+      .map(([scope, tags]) => ({ scope, tags }));
   }
   // The version a write must match. After our own write the book's answer is
   // the new version; until it arrives, the copy this view holds says it.
