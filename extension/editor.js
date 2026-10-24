@@ -140,23 +140,24 @@ export function createEditor(container, { address, scope: opened = 'global', sta
   // explorer's tables are frames of their own, and the editor can be in one
   // or above one. Focus leaving for that frame is the click away. Focus
   // leaving the browser altogether is not, so switching apps keeps the draft.
-  const view = panel.ownerDocument.defaultView;
+  const frame = panel.ownerDocument.defaultView;
   function blurred(event) {
-    if (event.target !== view) return;
+    if (event.target !== frame) return;
     setTimeout(() => {
       if (closed) return;
       const held = panel.ownerDocument.activeElement;
       let elsewhere = /^I?FRAME$/.test(held?.tagName || '');
-      if (!elsewhere && view.top !== view) { try { elsewhere = view.top.document.hasFocus(); } catch {} }
+      if (!elsewhere && frame.top !== frame) { try { elsewhere = frame.top.document.hasFocus(); } catch {} }
       if (elsewhere) { closeMenu(); leave(true); }
     });
   }
-  view.addEventListener('blur', blurred);
+  frame.addEventListener('blur', blurred);
   function finish() {
     if (!closed) {
       closed = true;
       panel.ownerDocument.removeEventListener('pointerdown', outside, true);
-      view.removeEventListener('blur', blurred);
+      frame.removeEventListener('blur', blurred);
+      wraps.disconnect();
       closeMenu();
       if (modal) panel.close();
       close();
@@ -176,7 +177,9 @@ export function createEditor(container, { address, scope: opened = 'global', sta
     button.title = `${view.hidden ? 'Show my tags' : 'Show website original'} for this address on this page. Resets on refresh.`;
   }
   if (visibility) get('.visibility').onclick = () => { if (!closed) { toggleVisibility(); updateVisibility(); } };
-  else get('.close').onclick = finish;
+  // Closing is leaving, as a click away is: the draft is kept. Cancel and
+  // Escape are the ways to leave without saving.
+  else get('.close').onclick = event => leave(event.isTrusted);
   if (modal) panel.addEventListener('cancel', event => { event.preventDefault(); finish(); });
   if (get('.clear')) get('.clear').onclick = () => { lines.forEach(item => { item.removed = true; }); fresh = blank(); adding = false; renderLines(null); get('.remove')?.focus(); };
   get('.copy').onclick = async () => {
@@ -211,7 +214,7 @@ export function createEditor(container, { address, scope: opened = 'global', sta
       const named = choice !== 'global' && known(choice).tags.join(', ');
       if (named) { option.append(element('i', undefined, { class: 'own' })); option.title = named; }
       option.append(element('span', scopeSymbol(choice), { class: 'symbol' }));
-      option.onclick = () => { closeMenu(); item.scope = choice; renderLines(null); (rowOf(item)?.querySelector('input:not(:disabled)') || rowOf(item)?.querySelector('.network'))?.focus(); };
+      option.onclick = () => { closeMenu(); item.scope = choice; renderLines(null); (rowOf(item)?.querySelector('textarea:not(:disabled)') || rowOf(item)?.querySelector('.network'))?.focus(); };
       return option;
     }));
     menuFor = { item, button };
@@ -271,7 +274,7 @@ export function createEditor(container, { address, scope: opened = 'global', sta
     get('.offer').hidden = !spare;
     get('.offer').replaceChildren();
     if (spare) {
-      const button = element('button', 'Add tag', { type: 'button', class: 'quiet' });
+      const button = element('button', 'Add', { type: 'button', class: 'quiet', 'aria-label': `Add tag ${offered.name}` });
       button.onclick = () => { fresh.tag = offered.name; fresh.scope = opened; adding = true; renderLines(null); rowOf(fresh)?.querySelector('textarea').focus(); };
       get('.offer').append(element('span', offered.name), button);
     }
@@ -317,7 +320,6 @@ export function createEditor(container, { address, scope: opened = 'global', sta
       const remove = row.querySelector('.remove');
       if (remove) remove.disabled = busy;
     });
-    get('.extras').hidden = !get('.clear');
     // "+" waits until there is a tag to add another to.
     get('.add').hidden = all().includes(fresh) && !fresh.tag.trim();
     get('.add').disabled = busy;
@@ -346,8 +348,9 @@ export function createEditor(container, { address, scope: opened = 'global', sta
     adding = true;
     renderLines(lines.length);
   };
-  function renderLines(focusAt = 0, typing = false) {
+  function renderLines(focusAt = 0) {
     const items = all();
+    wraps.disconnect();
     get('.lines').classList.toggle('ranked', lines.length > 1);
     get('.lines').replaceChildren(...items.map((item, index) => {
       const row = element('div', undefined, { class: item === fresh ? 'row fresh' : 'row' });
@@ -424,7 +427,7 @@ export function createEditor(container, { address, scope: opened = 'global', sta
     queueMicrotask(onLayout);
     if (focusAt === null) return;
     const input = panel.querySelectorAll('.row textarea')[focusAt];
-    if (input && !input.disabled) { input.focus(); if (typing) input.setSelectionRange(input.value.length, input.value.length); else input.select(); }
+    if (input && !input.disabled) { input.focus(); input.select(); }
   }
 
   // The lists a save of these lines writes: for each network they touch, every
@@ -518,8 +521,8 @@ export function createEditor(container, { address, scope: opened = 'global', sta
       phase = 'idle';
       get('.notice').textContent = error.message;
       // A book that answered with something else puts its own panel on screen,
-      // which is answer enough; everything else leaves only the notice, so the
-      // button says it too.
+      // which is answer enough; anything else is said by the notice and by the
+      // lines that were not saved.
       if (error.status !== 409) {
         for (const row of rows) row.animate(matchMedia('(prefers-reduced-motion: reduce)').matches ? REFUSED_STILL : REFUSED,
           { duration: 300, easing: 'ease-out' });
@@ -543,7 +546,7 @@ export function createEditor(container, { address, scope: opened = 'global', sta
         const keep = element('button', 'Keep mine', { type: 'button', class: 'quiet' });
         // The other button beside it only changes what the lines show, as every
         // other control in this panel does. This one writes, so it answers to the
-        // same rule as Save: a website script sharing this page must not be able
+        // same rule as Enter: a website script sharing this page must not be able
         // to settle a conflict in favour of a draft nobody confirmed.
         keep.onclick = event => {
           if (!event.isTrusted) return;
@@ -576,13 +579,13 @@ export function createEditor(container, { address, scope: opened = 'global', sta
     // Saved and showing its tick: about to close, so opening its tag again
     // starts a fresh editor rather than focusing this one.
     get confirming() { return phase === 'saved'; },
-    // Opening another address is leaving this one: its draft is saved first.
-    // A draft that cannot be saved here stays open.
-    async closeIfUnchanged() {
+    // Opening another address, or clicking this one's tag again, is leaving:
+    // the draft is saved first. A draft that cannot be saved here stays open.
+    async leave(trusted = true) {
       // A save already sent (or confirming) needs nothing more from this view.
-      if ((phase !== 'idle' || !edited() || activeState.activeBook === book) && await leave(true)) return true;
+      if ((phase !== 'idle' || !edited() || activeState.activeBook === book) && await leave(trusted)) return true;
       if (!closed) {
-        pageNotice = 'Save or close this draft to edit another address.';
+        pageNotice = 'Press Enter to save this draft, or Cancel it.';
         guard(); focus();
       }
       return closed;

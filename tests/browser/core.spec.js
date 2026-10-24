@@ -67,6 +67,8 @@ test('each tag line has its own network, and moving one saves both lists', async
   await page.keyboard.press('Enter');
   await expect(menu).toBeHidden();
   await expect(dialog.locator('.save-scope').nth(1)).toHaveText('Arbitrum');
+  // Picking a network goes back to the tag, ready for Enter.
+  await expect(page.getByRole('textbox', { name: 'Tag 2', exact: true })).toBeFocused();
   await expect(dialog.locator('.row').nth(1)).toHaveClass(/dirty/);
   await expect(dialog.locator('.row').nth(0)).not.toHaveClass(/dirty/);
   // "+" opens a new line, which picks its own network too.
@@ -159,6 +161,33 @@ test('clicking away saves the draft and preserves native focus and copy actions'
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(await page.evaluate(() => window.nativeCopied)).toBe(address);
   expect(await page.evaluate(() => window.saves.length)).toBe(1);
+});
+
+test('the tag that opened the editor closes it, saving the draft; the close button saves too', async ({ page }) => {
+  await start(page);
+  await edit(page).click();
+  await edit(page).click(); // Nothing typed: it simply closes.
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await edit(page).click();
+  await input(page).fill('Kept by the tag');
+  await edit(page).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await page.evaluate(() => window.saves)).toEqual([expect.objectContaining({ address, tags: ['Kept by the tag', 'Operations'] })]);
+
+  // Where there is a close button rather than the eye (the popup and the
+  // book), it leaves as a click away does; Cancel is the way to discard.
+  await page.evaluate(async address => {
+    const { createEditor, editorStyles } = await import('/extension/editor.js');
+    const host = document.body.appendChild(document.createElement('div'));
+    const shadow = host.attachShadow({ mode: 'open' });
+    await editorStyles(shadow);
+    window.closings = 0;
+    createEditor(shadow, { address, state: window.state, save: async draft => { window.saves.push(draft); }, close: () => { window.closings += 1; } });
+  }, address);
+  await input(page).fill('Kept by closing');
+  await page.getByRole('button', { name: 'Close editor' }).click();
+  await expect.poll(() => page.evaluate(() => window.closings)).toBe(1);
+  expect(await page.evaluate(() => window.saves.at(-1))).toMatchObject({ address, tags: ['Kept by closing', 'Operations'] });
 });
 
 test('a click into another frame of the page counts as clicking away, whichever side the editor is on', async ({ page }) => {
@@ -740,7 +769,7 @@ test.describe('a name the website already shows', () => {
     await expect(input(page)).toHaveValue('Treasury');
     await expect(fromSite(page)).toHaveCount(0);
     await expect(offer(page)).toContainText('Uniswap V3: Router');
-    await offer(page).getByRole('button', { name: 'Add tag' }).click();
+    await offer(page).getByRole('button', { name: 'Add tag Uniswap V3: Router', exact: true }).click();
     await submit(page);
     await expect.poll(() => page.evaluate(() => window.saves.at(-1))).toMatchObject({
       tags: ['Treasury', 'Operations', 'Uniswap V3: Router'],
@@ -777,7 +806,7 @@ test.describe('a name the website already shows', () => {
     await expect(input(page)).toHaveValue('Uniswap V3: Router');
     await tagFor(page, 'two').click();
     await expect(shownAddress(page)).toHaveText(checksumAddress(address));
-    await expect(page.getByRole('dialog')).not.toContainText('Save or close');
+    await expect(page.getByRole('dialog')).not.toContainText('Press Enter to save');
     expect(await page.evaluate(() => window.saves)).toHaveLength(0);
 
     await tagFor(page, 'one').click();

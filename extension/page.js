@@ -124,7 +124,7 @@ export async function createPageController({
         void button.offsetWidth;
         button.classList.add('is-popping');
       }
-      open(targets.get(target.element));
+      open(targets.get(target.element), { toggle: true, trusted: event.isTrusted });
     };
     root.append(button);
     if (target.nameLine) {
@@ -447,15 +447,18 @@ export async function createPageController({
   }
   observe();
 
-  async function open(target) {
+  async function open(target, { toggle = false, trusted = true } = {}) {
     if (!target) return;
+    // The tag that opened the editor closes it again, as a click away would:
+    // a draft is saved first, and one that cannot be stays open. Asked for
+    // from the context menu, the editor already open is simply brought back.
     if (editor && !editor.confirming && editorTarget?.address === target.address && editorTarget.network === target.network &&
         editorTarget.book === state.activeBook) {
       editorTarget = { ...target, book: state.activeBook };
-      position(true); editor.focus();
+      if (!toggle || !(await editor.leave(trusted))) { position(true); editor?.focus(); }
       return;
     }
-    if (editor && !(await editor.closeIfUnchanged())) { position(true); return; }
+    if (editor && !(await editor.leave(trusted))) { position(true); return; }
     if (editor) return;
     editorTarget = { ...target, book: state.activeBook };
     // About to edit is the moment a stale copy becomes a conflict, so this is

@@ -74,7 +74,7 @@ function render(next = state) {
   search();
 }
 async function edit(address, scope = 'global') {
-  if (editor && !(await editor.closeIfUnchanged())) return;
+  if (editor && !(await editor.leave())) return;
   if (editor) return;
   editor = createEditor(shadow, { address, scope, state, modal: true,
     save: draft => rpc({ type: 'Save', draft }),
