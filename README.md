@@ -10,8 +10,8 @@ Carry your own address labels across Etherscan, Safe, and other enabled sites. N
 
 - **Browser extension and site adapters.** Tag addresses in place. Etherscan and Safe have dedicated adapters; other enabled sites can recognize full addresses. A book stored in the browser works without a server.
 - **Optional self-hosted server.** Keep a separate SQLite book available across devices through an API and a browser address-book view.
-- **CLI.** `0xtagger serve` runs the server; `lookup` and `add` work with a configured server book from the terminal, with JSON output for agents and scripts.
-- **Agent skill.** The [0xtagger skill](skills/0xtagger/SKILL.md) guides evidence-based lookups and additions, including network scope and failure handling. For Codex, copy its folder into `~/.codex/skills/` to use it.
+- **CLI.** `0xtagger serve` runs the server; `lookup`, `add`, and `rename` work with a configured server book through its API, with JSON output for agents and scripts.
+- **Agent skill.** The [0xtagger skill](skills/0xtagger/SKILL.md) guides lookups, additions, and requested name corrections, including network scope and failure handling. For Codex, copy its folder into `~/.codex/skills/` to use it.
 
 Adopt existing Etherscan and Safe labels as you tag, or import Safe's saved address book after review.
 

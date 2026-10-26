@@ -1,11 +1,11 @@
 ---
 name: 0xtagger
-description: Look up labels for Ethereum addresses in a configured 0xtagger book and record durable, evidence-backed names established by an investigation.
+description: Look up and maintain Ethereum address labels in a configured 0xtagger book, adding established names or applying user-requested corrections.
 ---
 
 # 0xtagger
 
-Use the installed, configured CLI to consult the book during Ethereum address investigations. Its labels are personal notes, not proof of identity.
+Use the installed, configured, API-backed CLI for lookups and agent updates. Do not use the browser for this workflow. Labels are personal notes, not proof of identity.
 
 ## Look up
 
@@ -20,12 +20,24 @@ The first tag is the preferred name; later tags are aliases. A source names wher
 
 ## Add established names
 
-Near the end of an investigation, add only durable names or useful aliases backed by its evidence. Skip guesses; make no write if none qualify. Use `--chain ID` for network-specific names and `--global` only for identities established across chains. Existing preferred names stay first.
+Add names the user requests, or durable names and useful aliases established by an investigation. Skip guesses; make no write if none qualify. `add` creates missing records or appends aliases, preserving existing preferred names.
 
 ```sh
 0xtagger add --chain 1 'ADDRESS=Established name'
 ```
 
-The CLI reads credentials internally; never inspect or pass a token or write through the API. Exit `2` can mean a write landed without confirmation, so do not retry blindly. Exit `3` reports tags omitted because a record is full, not an outage. Report only confirmed additions or known omissions.
+## Correct a preferred name
+
+For user-requested corrections, use `rename`, not `add`. It replaces the first tag and removes the old primary name, preserving other aliases and the original source. An existing alias can become the preferred name without duplication. Missing records must be added first.
+
+```sh
+0xtagger rename --global 'ADDRESS=Corrected name' 'OTHER_ADDRESS=Another name' --json
+```
+
+Both writes accept batches and `--file PATH` (`ADDRESS=Name` per line). Rename takes one name per address and uses version checks: a concurrent edit rejects the entire batch. Look up and review conflicts before trying again.
+
+Choose `--chain ID` for network-specific roles and `--global` for identities established across chains or explicitly requested for all networks. Each command affects exactly that scope; existing network overrides remain. Do not infer a global identity just because the chain is unclear.
+
+The CLI resolves the book and credentials internally; never inspect or pass a token or construct ad-hoc API requests. Exit `1` is invalid input, missing rename targets, or local configuration. Exit `2` is a read/write failure or conflict; an unconfirmed write may have landed, so do not retry blindly. Exit `3` from `add` reports tags omitted because a record is full, not an outage. Report only confirmed results or known omissions.
 
 Do not start `0xtagger serve` merely for a lookup. Disclose only the addresses and labels needed for the task.

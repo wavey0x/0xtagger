@@ -328,30 +328,33 @@ def held(book):
 
 
 def writes(book):
-    return [method for method, _ in book.sent].count('POST')
+    return sum(method in {'POST', 'PUT'} for method, _ in book.sent)
 
 
-def test_add_requires_exactly_one_scope():
+@pytest.mark.parametrize('write', [cli.add, cli.rename])
+def test_writes_require_exactly_one_scope(write):
     for argv in [[f'{ADDRESS}=Treasury'],
                  ['--chain', '1', '--global', f'{ADDRESS}=Treasury']]:
         with pytest.raises(SystemExit) as refused:
-            cli.add(argv)
+            write(argv)
         assert refused.value.code == 1  # bad input never means book unavailable
 
 
-def test_add_takes_no_token_argument():
+@pytest.mark.parametrize('write', [cli.add, cli.rename])
+def test_writes_take_no_token_argument(write):
     with pytest.raises(SystemExit) as refused:
-        cli.add(['--chain', '1', '--token', TOKEN, f'{ADDRESS}=Treasury'])
+        write(['--chain', '1', '--token', TOKEN, f'{ADDRESS}=Treasury'])
     assert refused.value.code == 1
 
 
-def test_add_checks_every_name_before_sending_anything(book):
+@pytest.mark.parametrize('write', [cli.add, cli.rename])
+def test_writes_check_every_name_before_sending_anything(book, write):
     for wrong in ['0xnope=Treasury', f'{ADDRESS}=', f'{ADDRESS}={"x" * 81}',
                   f'{ADDRESS}=bad\x07tag']:
         with pytest.raises(SystemExit):
-            cli.add(['--chain', '1', wrong])
+            write(['--chain', '1', wrong])
     with pytest.raises(SystemExit):
-        cli.add(['--chain', '1', *[f'{ADDRESS}=Name {i}' for i in range(33)]])
+        write(['--chain', '1', *[f'{ADDRESS}=Name {i}' for i in range(33)]])
     # Nothing was sent on the way to any of those refusals.
     assert writes(book) == 0
 
@@ -534,6 +537,141 @@ def test_add_sends_a_bearer_header_and_never_an_origin(book):
     assert method == 'POST'
     assert headers['Authorization'] == f'Bearer {TOKEN}'
     assert not any(name.lower() == 'origin' for name in headers)
+
+
+def test_global_signer_updates_preserve_aliases_sources_and_other_scopes(book, capsys):
+    wavey = '0x' + 'ef' * 20
+    worms = '0x' + '12' * 20
+    book.put(f'/tags/global/{ADDRESS}',
+             headers={'Authorization': f'Bearer {TOKEN}'},
+             json={'tags': ['Muderteeth', 'artist', 'MURDERTEETH'],
+                   'source': 'safe:page', 'version': None})
+    cli.add(['--global', f'{OTHER}=Murderteeth', f'{wavey}=wavey4'])
+    cli.add(['--chain', '1', f'{ADDRESS}=Network name'])
+    assert cli.add(['--global', f'{worms}=worms signer']) == 0
+    before = held(book)
+    book.sent.clear()
+    capsys.readouterr()
+
+    names = [f'{ADDRESS}=murderteeth', f'{OTHER}=murderteeth 2', f'{wavey}=wavey4']
+    assert cli.rename(['--global', *names, '--json']) == 0
+    after = held(book)
+    assert after[(ADDRESS, 'global')]['tags'] == ['murderteeth', 'artist']
+    assert after[(ADDRESS, 'global')]['source'] == 'safe:page'
+    assert after[(OTHER, 'global')]['tags'] == ['murderteeth 2']
+    assert after[(OTHER, 'global')]['source'] == before[(OTHER, 'global')]['source']
+    for key in [(ADDRESS, 'eip155:1'), (wavey, 'global'), (worms, 'global')]:
+        assert after[key] == before[key]
+    rows = json.loads(capsys.readouterr().out)['results']
+    assert [(r['address'], r['scope'], r['label']) for r in rows] == [
+        (ADDRESS, 'global', 'murderteeth'), (OTHER, 'global', 'murderteeth 2'),
+        (wavey, 'global', 'wavey4')]
+    assert writes(book) == 1
+    assert book.sent[-1] == ('PUT', {'Authorization': f'Bearer {TOKEN}'})
+
+    book.sent.clear()
+    assert cli.rename(['--global', *names]) == 0
+    assert held(book) == after
+    assert writes(book) == 0
+
+
+def test_rename_changes_only_the_explicit_network(book, tmp_path):
+    cli.add(['--global', f'{ADDRESS}=Global name'])
+    cli.add(['--chain', '10', f'{ADDRESS}=Old network name'])
+    before = held(book)[(ADDRESS, 'global')]
+    names = tmp_path / 'names.txt'
+    names.write_text(f'# correction\n{ADDRESS}=New network name\n')
+    assert cli.rename(['--chain', '10', '--file', str(names)]) == 0
+    assert held(book)[(ADDRESS, 'global')] == before
+    assert held(book)[(ADDRESS, 'eip155:10')]['tags'] == ['New network name']
+
+
+@pytest.mark.parametrize('named_elsewhere', [False, True])
+def test_rename_refuses_missing_records_without_falling_back(book, named_elsewhere):
+    cli.add(['--chain', '1', f'{ADDRESS}=Mine'])
+    if named_elsewhere:
+        cli.add(['--global', f'{OTHER}=Elsewhere'])
+    before = held(book)
+    book.sent.clear()
+    with pytest.raises(SystemExit, match='use add for a new record'):
+        cli.rename(['--chain', '1', f'{ADDRESS}=New', f'{OTHER}=New too'])
+    assert held(book) == before
+    assert writes(book) == 0
+
+
+def test_rename_rejects_multiple_names_before_reading_the_book(book):
+    with pytest.raises(SystemExit, match='one name per address'):
+        cli.rename(['--global', f'{ADDRESS}=One', f'{ADDRESS}=Two'])
+    assert book.sent == []
+
+
+def test_a_concurrent_edit_refuses_the_entire_rename_batch(book, monkeypatch, capsys):
+    cli.add(['--global', f'{ADDRESS}=One', f'{OTHER}=Two'])
+    before = held(book)
+    send = cli.request
+
+    def concurrent(url, *, method='GET', **kwargs):
+        if method == 'PUT':
+            book.put(f'/tags/global/{OTHER}',
+                     headers={'Authorization': f'Bearer {TOKEN}'},
+                     json={'tags': ['Edited elsewhere'], 'version': before[(OTHER, 'global')]['version']})
+        return send(url, method=method, **kwargs)
+
+    monkeypatch.setattr(cli, 'request', concurrent)
+    book.sent.clear()
+    capsys.readouterr()
+    assert cli.rename(['--global', f'{ADDRESS}=New one', f'{OTHER}=New two', '--json']) == 2
+    assert held(book)[(ADDRESS, 'global')] == before[(ADDRESS, 'global')]
+    assert held(book)[(OTHER, 'global')]['tags'] == ['Edited elsewhere']
+    printed = capsys.readouterr()
+    assert json.loads(printed.out)['unconfirmed'] is False
+    assert json.loads(printed.out)['results'] == []
+    assert 'nothing was renamed' in printed.err
+    assert writes(book) == 1
+
+
+@pytest.mark.parametrize('failure', ['lost', 'server_error', 'missing', 'wrong_scope', 'wrong_tags'])
+def test_an_unconfirmed_rename_is_not_reported_or_retried(book, monkeypatch, capsys, failure):
+    cli.add(['--global', f'{ADDRESS}=Old'])
+    send = cli.request
+
+    def unconfirming(url, *, method='GET', **kwargs):
+        status, body = send(url, method=method, **kwargs)
+        if method == 'PUT':
+            if failure == 'lost':
+                raise cli.Unavailable('reply lost')
+            if failure == 'server_error':
+                return 500, {'detail': 'reply failed after commit'}
+            if failure == 'missing':
+                body = {}
+            else:
+                key, value = ('scope', 'eip155:1') if failure == 'wrong_scope' else ('tags', ['Other'])
+                body['records'][0][key] = value
+        return status, body
+
+    monkeypatch.setattr(cli, 'request', unconfirming)
+    book.sent.clear()
+    capsys.readouterr()
+    assert cli.rename(['--global', f'{ADDRESS}=New', '--json']) == 2
+    printed = capsys.readouterr()
+    assert json.loads(printed.out)['results'] == []
+    assert json.loads(printed.out)['unconfirmed'] is True
+    assert 'unknown' in printed.err
+    assert TOKEN not in printed.out + printed.err
+    assert held(book)[(ADDRESS, 'global')]['tags'] == ['New']
+    assert writes(book) == 1
+
+
+def test_rename_needs_a_token_and_a_version_before_writing(book, monkeypatch):
+    (cli.config_home() / 'token').unlink()
+    with pytest.raises(SystemExit, match='writing needs'):
+        cli.rename(['--global', f'{ADDRESS}=New'])
+    assert book.sent == []
+    keep_token()
+    monkeypatch.setattr(cli, 'records_of', lambda url: [
+        {'address': ADDRESS, 'scope': 'global', 'tags': ['Old']}])
+    assert cli.rename(['--global', f'{ADDRESS}=New']) == 2
+    assert writes(book) == 0
 
 
 def test_the_real_transport_sends_bearer_auth_and_no_origin(monkeypatch, capsys):

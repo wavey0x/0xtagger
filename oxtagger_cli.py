@@ -1,12 +1,12 @@
-"""One command for the book: serve it, look an address up, or add a name.
+"""One command for the book: serve it, look up, add, or rename an address.
 
 Dispatch is standard-library only and the server is imported inside `serve`
 alone, because a lookup is the frequent operation and must not pay for a web
 framework it never uses.
 
 `lookup` makes a keyless GET and retries once with the configured token only
-on 401. `add` presents the bearer token `write_token()` resolves and adds
-names without replacing those already held.
+on 401. Writes present the bearer token `write_token()` resolves. `add`
+appends names; `rename` corrects a primary name using the record's version.
 
 A book that cannot be read is reported as unavailable and never as an address
 having no tag. Those are different answers and conflating them is how a
@@ -24,7 +24,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 PROG = "0xtagger"
-COMMANDS = ("serve", "lookup", "add")
+COMMANDS = ("serve", "lookup", "add", "rename")
 TIMEOUT = 10
 ADDRESS = re.compile(r"0x[0-9a-f]{40}", re.IGNORECASE)
 CHAIN = re.compile(r"[1-9][0-9]{0,19}")
@@ -142,7 +142,7 @@ def configured_token() -> str | None:
     """The book's bearer token, if configured. Never printed or logged.
 
     A missing file is fine for a keyless read. A present file must meet the
-    same permission and content rules whether lookup or add needs it.
+    same permission and content rules whether a lookup or write needs it.
     """
     supplied = os.environ.get("OXTAGGER_TOKEN")
     if supplied and supplied.strip():
@@ -176,7 +176,7 @@ def write_token() -> str:
 
 
 # ---------------------------------------------------------------------------
-# The request both commands use
+# The shared transport
 # ---------------------------------------------------------------------------
 
 def request(url: str, *, method: str = "GET", token: str | None = None, body=None):
@@ -490,10 +490,11 @@ def capacity_items(body, additions) -> dict[tuple[str, str], dict] | None:
     return seen
 
 
-def add(argv: list[str]) -> int:
+def write_input(argv: list[str], command: str) -> tuple[argparse.Namespace, list[dict]]:
     parser = CliParser(
-        prog=f"{PROG} add",
-        description="Add established names, preserving the book's existing primary names.",
+        prog=f"{PROG} {command}",
+        description=("Add names, preserving existing primary names." if command == "add"
+                     else "Replace existing primary names, preserving other aliases."),
         epilog="Writes read the book's token from its configured file; it is never an argument.")
     parser.add_argument("name", nargs="*", metavar="ADDRESS=TAG",
                         help="one or more addresses and the name each one has")
@@ -512,11 +513,16 @@ def add(argv: list[str]) -> int:
         sys.exit(f"{PROG}: not a chain id: {args.chain!r}")
     if not args.name and not args.file:
         parser.print_help()
-        return 0
+        return args, []
 
     scope = "global" if args.everywhere else f"eip155:{args.chain}"
-    additions = additions_from(
+    names = additions_from(
         [*args.name, *(read_lines(args.file) if args.file else [])], scope)
+    return args, names
+
+
+def add(argv: list[str]) -> int:
+    args, additions = write_input(argv, "add")
     if not additions:
         return 0
 
@@ -601,6 +607,68 @@ def add(argv: list[str]) -> int:
 
 
 # ---------------------------------------------------------------------------
+# rename
+# ---------------------------------------------------------------------------
+
+def rename(argv: list[str]) -> int:
+    args, names = write_input(argv, "rename")
+    if not names:
+        return 0
+    if any(len(item["tags"]) != 1 for item in names):
+        sys.exit(f"{PROG}: rename takes one name per address")
+
+    unconfirmed = False
+    try:
+        book, token = book_url(), write_token()
+        records = {(record["address"], record["scope"]): record
+                   for record in records_of(book)}
+        changes = []
+        for item in names:
+            current = records.get((item["address"], item["scope"]))
+            if current is None:
+                sys.exit(f"{PROG}: {item['address']} is not named on "
+                         f"{scope_name(item['scope'])}; use add for a new record")
+            name = item["tags"][0]
+            tags = [name, *[tag for tag in current["tags"][1:]
+                            if tag.casefold() != name.casefold()]]
+            if tags != current["tags"]:
+                version = current.get("version")
+                if not isinstance(version, str) or not version:
+                    raise Unavailable("the book returned a record without a version; nothing was renamed")
+                changes.append({"address": item["address"], "scope": item["scope"],
+                                "tags": tags, "version": version})
+        if changes:
+            unconfirmed = True
+            status, body = request(book + "/tags", method="PUT", token=token,
+                                   body={"changes": changes})
+            if status != 200:
+                unconfirmed = status not in {401, 403, 409, 422}
+                if status == 409:
+                    raise Unavailable("saved elsewhere; nothing was renamed. Look up and review the current names")
+                raise Unavailable(f"the book answered {status}")
+            saved = body.get("records") if isinstance(body, dict) else None
+            if (not isinstance(saved, list) or len(saved) != len(changes)
+                    or not all(isinstance(record, dict) and all(
+                        record.get(key) == change[key] for key in ("address", "scope", "tags"))
+                        for record, change in zip(saved, changes))):
+                raise Unavailable("the book did not confirm every rename")
+            records.update(((record["address"], record["scope"]), record) for record in saved)
+    except Unconfigured as reason:
+        sys.exit(f"{PROG}: {reason}")
+    except Unavailable as reason:
+        problem = str(reason)
+        if unconfirmed:
+            problem += ". Whether the rename landed is unknown; do not retry blindly"
+        if args.json:
+            print(json.dumps({"results": [], "error": problem, "unconfirmed": unconfirmed}, indent=2))
+        print(f"{PROG}: {problem}", file=sys.stderr)
+        return 2
+
+    report([entry(records[(item["address"], item["scope"])]) for item in names], book, args.json)
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # Dispatch
 # ---------------------------------------------------------------------------
 
@@ -609,6 +677,7 @@ USAGE = f"""usage: {PROG} <command> [options]
   serve    run the address book
   lookup   what your book calls an Ethereum address
   add      record a name your work established
+  rename   correct an existing primary name
 
 `{PROG} <command> --help` describes one command.
 """
@@ -630,6 +699,8 @@ def main() -> int:
         return lookup(rest)
     if name == "add":
         return add(rest)
+    if name == "rename":
+        return rename(rest)
     sys.exit(f"{PROG}: no such command: {name!r}. Try: {', '.join(COMMANDS)}")
 
 

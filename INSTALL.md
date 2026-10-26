@@ -162,7 +162,7 @@ privately, so rotating it means updating the server, this file, and the
 extension's connection. The command reads it internally and never accepts it as
 an argument or prints it; a token file others can read is refused. The browser
 view's Tailscale identity and `Origin` rules stay a browser boundary — a
-command does not supply those for itself, and `add` sends no `Origin` header.
+command does not supply those for itself, and writes send no `Origin` header.
 
 Exit `0` means every requested tag is present, newly added or already held.
 Exit `1` is bad input or local configuration. Exit `2` is a server, credential,
@@ -171,6 +171,29 @@ retry blindly. Exit `3` means the output names tags that could not be added
 because a record is full. On a capacity refusal, the server writes none of the
 batch; the command excludes the full records and tries the rest once. A
 capacity omission is known and is never reported as an existing tag.
+
+## Correct a name from the terminal
+
+`0xtagger rename` replaces an existing record's first tag, removing the old
+primary name and preserving other aliases and the original source. If the new
+name is already an alias, it is promoted without duplication.
+
+```sh
+0xtagger rename --global '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045=Vitalik' --json
+0xtagger rename --chain 1 --file corrections.txt   # one ADDRESS=Name per line
+```
+
+Use the same credentials and explicit scope as `add`. Each address must already
+have a record in that exact scope; `rename` never falls back to another network
+or creates a record. A global rename leaves network overrides intact. Other
+addresses are untouched, and names already matching require no write.
+
+Renames travel in one version-checked API batch. A concurrent edit rejects the
+whole batch; look up and review the current names before trying again. Exit `0`
+confirms the requested names, `1` means invalid input, missing targets, or local
+configuration, and `2` means a read/write failure or conflict. An unconfirmed
+write may have landed: do not retry blindly. Agent updates use these API-backed
+commands, without opening the browser or handling credentials themselves.
 
 ## Data and backups
 
