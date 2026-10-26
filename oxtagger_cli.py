@@ -490,11 +490,10 @@ def capacity_items(body, additions) -> dict[tuple[str, str], dict] | None:
     return seen
 
 
-def write_input(argv: list[str], command: str) -> tuple[argparse.Namespace, list[dict]]:
+def write_input(argv: list[str], command: str, description: str) -> tuple[argparse.Namespace, list[dict]]:
     parser = CliParser(
         prog=f"{PROG} {command}",
-        description=("Add names, preserving existing primary names." if command == "add"
-                     else "Replace existing primary names, preserving other aliases."),
+        description=description,
         epilog="Writes read the book's token from its configured file; it is never an argument.")
     parser.add_argument("name", nargs="*", metavar="ADDRESS=TAG",
                         help="one or more addresses and the name each one has")
@@ -522,7 +521,7 @@ def write_input(argv: list[str], command: str) -> tuple[argparse.Namespace, list
 
 
 def add(argv: list[str]) -> int:
-    args, additions = write_input(argv, "add")
+    args, additions = write_input(argv, "add", "Add names, preserving existing primary names.")
     if not additions:
         return 0
 
@@ -611,7 +610,7 @@ def add(argv: list[str]) -> int:
 # ---------------------------------------------------------------------------
 
 def rename(argv: list[str]) -> int:
-    args, names = write_input(argv, "rename")
+    args, names = write_input(argv, "rename", "Replace existing primary names, preserving other aliases.")
     if not names:
         return 0
     if any(len(item["tags"]) != 1 for item in names):

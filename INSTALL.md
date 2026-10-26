@@ -192,8 +192,7 @@ Renames travel in one version-checked API batch. A concurrent edit rejects the
 whole batch; look up and review the current names before trying again. Exit `0`
 confirms the requested names, `1` means invalid input, missing targets, or local
 configuration, and `2` means a read/write failure or conflict. An unconfirmed
-write may have landed: do not retry blindly. Agent updates use these API-backed
-commands, without opening the browser or handling credentials themselves.
+write may have landed: do not retry blindly.
 
 ## Data and backups
 

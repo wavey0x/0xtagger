@@ -5,39 +5,32 @@ description: Look up and maintain Ethereum address labels in a configured 0xtagg
 
 # 0xtagger
 
-Use the installed, configured, API-backed CLI for lookups and agent updates. Do not use the browser for this workflow. Labels are personal notes, not proof of identity.
+Use the configured API-backed CLI; credentials resolve internally. Never use the browser, inspect/pass tokens, construct ad-hoc API requests, or start `serve` for lookups. Labels are personal notes, not identity proof. Disclose only needed addresses and labels.
 
 ## Look up
 
-Pass full addresses and `--chain ID` when the question concerns one network. `--find TEXT` searches tags; `--json` gives structured output.
+Pass full addresses; use `--chain ID` for one network, `--find TEXT` to search tags, and `--json` for structured output.
 
 ```sh
 0xtagger lookup ADDRESS --chain 1 --json
 0xtagger lookup --find TEXT
 ```
 
-The first tag is the preferred name; later tags are aliases. A source names where a record began, not independent verification. Exit `0` includes absent addresses. Exit `2` means the book was unavailable: nothing was learned. Do not call an address untagged or retry by another route; the CLI handles credential retry.
+First tag is preferred; others are aliases. Source means origin, not verification. Lookup exits: `0` includes absent addresses; `2` means unavailable, never untagged. Credential retry is internal; do not try another route.
 
-## Add established names
+## Write names
 
-Add names the user requests, or durable names and useful aliases established by an investigation. Skip guesses; make no write if none qualify. `add` creates missing records or appends aliases, preserving existing preferred names.
+`add` creates records or appends aliases, keeping the preferred name. Add user-requested names or durable, useful names and aliases established by investigation. Skip guesses; write nothing if none qualify.
+
+For user-requested corrections, `rename` replaces the primary name, preserving other aliases and source. Existing aliases promote without duplication. The record must exist in the exact scope.
 
 ```sh
 0xtagger add --chain 1 'ADDRESS=Established name'
-```
-
-## Correct a preferred name
-
-For user-requested corrections, use `rename`, not `add`. It replaces the first tag and removes the old primary name, preserving other aliases and the original source. An existing alias can become the preferred name without duplication. Missing records must be added first.
-
-```sh
 0xtagger rename --global 'ADDRESS=Corrected name' 'OTHER_ADDRESS=Another name' --json
 ```
 
-Both writes accept batches and `--file PATH` (`ADDRESS=Name` per line). Rename takes one name per address and uses version checks: a concurrent edit rejects the entire batch. Look up and review conflicts before trying again.
+Both accept batches and `--file PATH` (`ADDRESS=Name` per line); rename takes one name/address. Concurrent edits reject the whole rename batch: look up and review before retrying.
 
-Choose `--chain ID` for network-specific roles and `--global` for identities established across chains or explicitly requested for all networks. Each command affects exactly that scope; existing network overrides remain. Do not infer a global identity just because the chain is unclear.
+Use `--chain ID` for network roles; `--global` requires cross-chain identity or an explicit all-networks request. Writes affect exactly that scope; overrides remain. An unclear chain never justifies global.
 
-The CLI resolves the book and credentials internally; never inspect or pass a token or construct ad-hoc API requests. Exit `1` is invalid input, missing rename targets, or local configuration. Exit `2` is a read/write failure or conflict; an unconfirmed write may have landed, so do not retry blindly. Exit `3` from `add` reports tags omitted because a record is full, not an outage. Report only confirmed results or known omissions.
-
-Do not start `0xtagger serve` merely for a lookup. Disclose only the addresses and labels needed for the task.
+Write exits: `1` means invalid input, missing rename targets, or configuration; `2` means failure or conflict; `3` from `add` names capacity omissions, not an outage. Unconfirmed writes may have landed: never retry blindly. Report only confirmed results or known omissions.
