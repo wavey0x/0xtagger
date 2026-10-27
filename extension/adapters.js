@@ -67,7 +67,7 @@ const holderAddress = (element, url) => {
 // A name cut short to fit is not a name: whatever stands in the field is what
 // Save would store. The whole of it is written in a tooltip, and the explorer's
 // own script takes that tooltip over and the title out of the markup before
-// anyone can click a row, so a row showing half a name is offering nothing.
+// anyone can click a row, so half a name cannot be used on its own.
 const whole = element => (/[.…]$/.test(element.textContent.trim()) ? null : element.textContent);
 // A token is named in its own row rather than by a public name tag: the row
 // leads with the token's name and sets its symbol beside it in muted text,
@@ -87,6 +87,35 @@ const tokenName = element => {
 const linkName = element => addressLink(element, element.baseURI) &&
   !/0x[0-9a-f]/i.test(element.textContent) ? whole(element) : null;
 
+// Receipt logs keep the emitter's public name beside its address, even while
+// the Logs tab is closed. Unlike token-row titles, this caption and its
+// data-bs-title survive tooltip initialization. All four address sources must
+// agree before the caption can name another display of that same address.
+// seen: https://etherscan.io/tx/0xb9b2278b14348b37d9a7537d362bd56270a24688a137d0c8fdc6b0a34c53b3f7
+//       — open sfrxUSD's tag in ERC-20 Tokens Transferred; its full public name
+//       is already in the unselected Logs tab — 2026-10-27.
+const LOG_EMITTER = '#eventlog-tab-content [id^="logI_"] > div > dl:first-child > dd > a[data-highlight-target]';
+const eventLogName = (element, { address, url }) => {
+  const names = new Set();
+  for (const link of query(element.ownerDocument, LOG_EMITTER)) {
+    let href;
+    try { href = new URL(link.getAttribute('href'), url); }
+    catch { continue; }
+    if (href.origin !== url.origin || addressLink(link, url)?.address !== address ||
+        parseAddress(link.textContent.trim()) !== address ||
+        parseAddress(link.getAttribute('data-highlight-target')) !== address) continue;
+    const labels = link.parentElement.querySelectorAll(':scope > span[data-bs-toggle="tooltip"][data-bs-title]');
+    if (labels.length !== 1) continue;
+    const label = labels[0];
+    const detail = label.getAttribute('data-bs-title').match(/^(.+?)\s*\((0x[0-9a-f]{40})\)\s*$/is);
+    const name = usableName(detail?.[1]);
+    if (!name || /[.…]$/.test(name) || parseAddress(detail?.[2]) !== address ||
+        label.textContent.trim().replace(/\s+/g, ' ') !== `(${name})`) continue;
+    names.add(name);
+  }
+  return names.size === 1 ? [...names][0] : null;
+};
+
 const etherscanAdapter = site({
   id: 'Etherscan',
   source: 'etherscan:page',
@@ -94,11 +123,13 @@ const etherscanAdapter = site({
   // same element a tag is allowed to stand in for. Several displays carry
   // no name tag and name the thing themselves — a token row, a holder row,
   // and a link whose text is the name with the address kept out of sight.
-  names: element => {
+  names: (element, context) => {
     const tagged = element.matches('.hash-tag') ? element : element.querySelector('.hash-tag');
-    if (tagged) return whole(tagged);
-    if (element.matches(HOLDER_LINK)) return /0x[0-9a-f]/i.test(element.textContent) ? null : whole(element);
-    return tokenName(element) || linkName(element);
+    let name;
+    if (tagged) name = whole(tagged);
+    else if (element.matches(HOLDER_LINK)) name = /0x[0-9a-f]/i.test(element.textContent) ? null : whole(element);
+    else name = tokenName(element) || linkName(element);
+    return usableName(name) || eventLogName(element, context);
   },
   // The exact-host group excludes explorers with different frontends.
   // seen: gnosisscan.io/address/0x000000000000000000000000000000000000dEaD

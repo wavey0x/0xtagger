@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 import { checksumAddress } from '../../extension/checksum.js';
 import { address, other, record, start, edit, input, save, submit, shownAddress, contrast, tagFor, wallets } from './controller.js';
 
@@ -900,6 +901,110 @@ test.describe('a name the website already shows', () => {
     await tagFor(page, 'row').click();
     await expect(input(page)).toHaveValue('stETH');
     await expect(fromSite(page)).toHaveText('(from Etherscan)');
+  });
+
+  test.describe('a complete name in the receipt logs', () => {
+    const token = '0xcf62f905562626cfcdd2261162a51fd02fc9c5b6';
+    const name = 'Frax Finance: sfrxUSD Token';
+    const fixture = () => readFile(new URL('../fixtures/etherscan-sfrxusd.html', import.meta.url), 'utf8');
+    const openToken = async (page, records = [record]) => {
+      await open(page, await fixture(), records);
+      await page.locator('#token').evaluate(link => {
+        link.onclick = event => { event.preventDefault(); window.nativeClick = link.getAttribute('href'); };
+      });
+      await page.locator('#token-copy').evaluate(link => {
+        link.onclick = event => { event.preventDefault(); window.nativeCopied = link.getAttribute('data-clipboard-text'); };
+      });
+    };
+
+    for (const initialized of [false, true]) {
+      test(`fills the shortened token from hidden logs ${initialized ? 'after' : 'before'} tooltip initialization`, async ({ page }) => {
+        await openToken(page);
+        if (initialized) await page.locator('#token [title]').evaluateAll(nodes => {
+          for (const node of nodes) node.removeAttribute('title');
+        });
+        await tagFor(page, 'token').click();
+        await expect(input(page)).toHaveValue(name);
+        await expect(fromSite(page)).toHaveText('(from Etherscan)');
+        await expect(page.getByRole('dialog').locator('.save-scope')).toHaveText('Ethereum');
+        expect(await page.evaluate(() => window.saves)).toHaveLength(0);
+        await submit(page);
+        await expect.poll(() => page.evaluate(() => window.saves.at(-1)))
+          .toMatchObject({ address: token, scope: 'eip155:1', tags: [name], source: 'etherscan:page' });
+        await expect(page.locator('#token')).toHaveText('Staked Frax ... (sfrxUS...)');
+        await page.locator('#token').click();
+        expect(await page.evaluate(() => window.nativeClick)).toBe(`/token/${token}`);
+        await page.locator('#token-copy').click();
+        expect((await page.evaluate(() => window.nativeCopied)).toLowerCase()).toBe(token);
+      });
+    }
+
+    test('keeps a complete token-row name ahead of the log label', async ({ page }) => {
+      await open(page, (await fixture()).replace('Staked Frax ...', 'Staked Frax USD'), [record]);
+      await tagFor(page, 'token').click();
+      await expect(input(page)).toHaveValue('Staked Frax USD');
+    });
+
+    test('offers the log label without replacing saved tags', async ({ page }) => {
+      await openToken(page, [{ ...record, address: token }]);
+      await tagFor(page, 'token').click();
+      await expect(input(page)).toHaveValue('Treasury');
+      await expect(offer(page)).toContainText(name);
+      expect(await page.evaluate(() => window.saves)).toHaveLength(0);
+    });
+
+    test('rejects mismatched, incomplete or unrelated log evidence', async ({ page }) => {
+      const html = await fixture();
+      const split = html.indexOf('<div class="tab-pane');
+      const row = html.slice(0, split);
+      const logs = html.slice(split);
+      const variants = [
+        logs.replace(`/address/${token}`, `/address/${other}`),
+        logs.replace(`data-highlight-target="${token}"`, `data-highlight-target="${other}"`),
+        logs.replace(`<span>${token}</span>`, `<span>${other}</span>`),
+        logs.replace(`&#10;(${token})`, `&#10;(${other})`),
+        logs.replaceAll(token, other),
+        logs.replace(`/address/${token}`, `https://example.org/address/${token}`),
+        logs.replace(`/address/${token}`, 'http://['),
+        logs.replace(`>(${name})</span>`, '>(A different name)</span>'),
+        logs.replaceAll(name, 'Frax Finance: sfrxUSD...'),
+        logs.replace('id="eventlog-tab-content"', 'id="unrelated-widget"'),
+        logs.replace('data-bs-title=', 'data-unrelated-title='),
+      ];
+      for (const variant of variants) {
+        await open(page, row + variant, [record]);
+        await tagFor(page, 'token').click();
+        await expect(input(page)).toHaveValue('');
+        await expect(fromSite(page)).toHaveCount(0);
+      }
+    });
+
+    test('accepts repeated agreeing emitters and rejects conflicting names', async ({ page }) => {
+      await openToken(page);
+      await page.locator('#logI_274').evaluate(log => {
+        const copy = log.cloneNode(true); copy.id = 'logI_275'; log.after(copy);
+      });
+      await tagFor(page, 'token').click();
+      await expect(input(page)).toHaveValue(name);
+      await page.keyboard.press('Escape');
+      await page.locator('#logI_275 [data-bs-title]').evaluate(label => {
+        label.textContent = '(Another public name)';
+        label.setAttribute('data-bs-title', label.getAttribute('data-bs-title').replace('Frax Finance: sfrxUSD Token', 'Another public name'));
+      });
+      await tagFor(page, 'token').click();
+      await expect(input(page)).toHaveValue('');
+    });
+
+    test('reads the current logs when the editor is opened again', async ({ page }) => {
+      await openToken(page);
+      await tagFor(page, 'token').click();
+      await expect(input(page)).toHaveValue(name);
+      await page.keyboard.press('Escape');
+      await page.locator('#eventlog-tab-content').evaluate(logs => logs.remove());
+      await tagFor(page, 'token').click();
+      await expect(input(page)).toHaveValue('');
+      expect(await page.evaluate(() => window.saves)).toHaveLength(0);
+    });
   });
 
   // A block's fee recipient is named by the link itself, with no name tag in

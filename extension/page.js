@@ -483,7 +483,8 @@ export async function createPageController({
     // An address reached through the context menu has no display behind it, so
     // there is nothing for a site to be calling it.
     const display = target.element ? shownOn(target) : null;
-    const offered = display && adapter.names && adapter.source ? usableName(adapter.names(display)) : null;
+    const offered = display && adapter.names && adapter.source
+      ? usableName(adapter.names(display, { address: target.address, url: url() })) : null;
     const suggestion = offered ? { name: offered, source: adapter.source } : null;
     // A name accepted from a website belongs to the network that website was
     // showing it on: a contract's label on one chain says nothing about the
