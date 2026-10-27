@@ -1,5 +1,5 @@
 body { background: var(--0xtagger-canvas); }
-.book { width: min(1080px, calc(100% - 40px)); margin: 0 auto; padding: 20px 0; }
+.book { width: min(960px, calc(100% - 40px)); margin: 0 auto; padding: 20px 0; }
 .book-header,.book-heading,.book-tools,.book-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .book-header { margin-bottom: 22px; }
 .book-header .brand { font-size: 22px; }
