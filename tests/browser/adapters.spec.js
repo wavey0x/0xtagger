@@ -279,13 +279,13 @@ test.describe('Etherscan token holders', () => {
     expect(await page.evaluate(() => window.nativeCopied)).toBe(address);
   });
 
-  test('offers the holder name only for the matching wallet and chain', async ({ page }) => {
+  test('offers the verified holder name with an all-networks default', async ({ page }) => {
     await start(page, { site, html: table(row()), framed: true, records: [] });
     await page.getByRole('button', { name: 'Edit wallet tags' }).click();
     await expect(page.getByRole('textbox', { name: 'Tag 1', exact: true })).toHaveValue('Curve: Fee Receiver');
     await page.getByRole('textbox', { name: 'Tag 1', exact: true }).press('Enter');
     await expect.poll(() => page.evaluate(() => window.saves.at(-1)))
-      .toMatchObject({ address, scope: 'eip155:1', tags: ['Curve: Fee Receiver'], source: 'etherscan:page' });
+      .toMatchObject({ address, scope: 'global', tags: ['Curve: Fee Receiver'], source: 'etherscan:page' });
   });
 
   test('rejects a holder whose link and copy disagree or whose token page differs', async ({ page }) => {

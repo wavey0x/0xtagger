@@ -1,21 +1,24 @@
-body { background: radial-gradient(ellipse at top right, var(--0xtagger-accent-canvas), transparent 55%), var(--0xtagger-canvas); }
-.book { width: min(1000px, calc(100% - 48px)); margin: 0 auto; padding: 28px 0; }
+body { background: var(--0xtagger-canvas); }
+.book { width: min(1080px, calc(100% - 40px)); margin: 0 auto; padding: 20px 0; }
 .book-header,.book-heading,.book-tools,.book-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.book-header { margin-bottom: 40px; }
-.book-header .brand { font-size: 24px; }
+.book-header { margin-bottom: 22px; }
+.book-header .brand { font-size: 22px; }
 .book-header .connection-line { width: 220px; }
-.book-heading { margin-bottom: 16px; }
-.book-heading h2 { font-size: 24px; letter-spacing: -.6px; }
-#count { margin: 4px 0 0; }
-.book-panel { padding: 0; overflow: hidden; }
-/* Search takes the room it needs; the two file actions belong together at the
-   end of the row rather than drifting apart across whatever is left. */
-.book-tools { justify-content: flex-start; gap: 8px; padding: 12px; border-bottom: 1px solid var(--0xtagger-line); }
-#search { flex: 1; max-width: 400px; margin-right: auto; }
-#import,#export { flex-shrink: 0; font-size: 11px; }
+.book-heading { margin-bottom: 12px; }
+.book-title { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; }
+.book-heading h2 { font-size: 20px; letter-spacing: -.5px; }
+#count { margin: 0; }
+#add-address { font-size: 12px; }
+.book-panel { padding: 0; overflow: hidden; border-radius: 10px; background: var(--0xtagger-panel); backdrop-filter: none; box-shadow: none; }
+/* Search takes the room it needs; sync and file actions stay together at the
+   end of the row. */
+.book-tools { justify-content: flex-start; gap: 12px; padding: 10px 12px; border-bottom: 1px solid var(--0xtagger-line); }
+#search { flex: 1; min-width: 0; max-width: 360px; margin-right: auto; padding: 7px 9px; font-size: 12px; }
+.book-actions { display: flex; align-items: center; flex-shrink: 0; gap: 4px; }
+#import,#export { font-size: 11px; padding: 7px 9px; }
 .table-scroll { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; }
-th,td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--0xtagger-line); }
+th,td { padding: 7px 12px; text-align: left; border-bottom: 1px solid var(--0xtagger-line); }
 th { font-size: 10px; font-weight: 600; color: var(--0xtagger-muted); }
 th:first-child { width: 40%; }
 th:last-child { width: 48px; }
@@ -27,11 +30,12 @@ tr:last-child td { border-bottom: 0; }
 .records-table .network-cell,.records-table .source-cell { color: var(--0xtagger-muted); font-size: 11px; }
 .record { max-width: 100%; text-align: left; padding: 0; color: var(--0xtagger-ink); background: none; }
 .record:hover strong { color: var(--0xtagger-accent); }
-.record strong { display: block; font-size: 13px; font-weight: 700; overflow-wrap: anywhere; }
+.record strong { display: block; font-size: 12px; line-height: 1.4; font-weight: 650; overflow-wrap: anywhere; }
 .address-value { display: flex; align-items: center; gap: 5px; min-width: 0; }
-.address-value code { display: block; min-width: 0; font: 12px/1.6 ui-monospace, monospace; overflow-wrap: anywhere; }
+.address-value code { display: block; min-width: 0; font: 11px/1.5 ui-monospace, monospace; overflow-wrap: anywhere; }
 .address-value .address-short { display: none; }
-.address-value .copy { flex-shrink: 0; }
+.address-value .copy { flex: 0 0 22px; width: 22px; height: 22px; padding: 4px; }
+.address-value .copy svg { width: 14px; height: 14px; }
 .copy { color: var(--0xtagger-muted); }
 #empty { padding: 36px 16px; text-align: center; color: var(--0xtagger-muted); font-size: 13px; }
 #empty p { margin: 0 0 8px; }
@@ -48,12 +52,11 @@ tr:last-child td { border-bottom: 0; }
 }
 @media (max-width: 600px) {
   .book { width: calc(100% - 24px); padding: 16px 0; }
-  .book-header { margin-bottom: 28px; }
+  .book-header { margin-bottom: 18px; }
   .book-header .connection-line { width: 180px; }
-  .book-tools { display: grid; grid-template-columns: minmax(0,1fr) auto auto; gap: 8px; }
+  .book-tools { display: grid; grid-template-columns: minmax(0,1fr); gap: 6px; }
   #search { grid-column: 1 / -1; min-width: 0; max-width: none; margin-right: 0; }
-  #import { grid-column: 2; }
-  #export { grid-column: 3; }
+  .book-actions { justify-content: flex-end; }
   .records-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .records-table tbody { display: block; }
   .records-table tr { display: grid; grid-template-columns: minmax(0,1fr) auto; grid-template-areas: 'tag tag' 'network address'; column-gap: 10px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--0xtagger-line); }

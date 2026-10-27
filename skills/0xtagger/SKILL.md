@@ -25,12 +25,12 @@ First tag is preferred; others are aliases. Source means origin, not verificatio
 For user-requested corrections, `rename` replaces the primary name, preserving other aliases and source. Existing aliases promote without duplication. The record must exist in the exact scope.
 
 ```sh
-0xtagger add --chain 1 'ADDRESS=Established name'
-0xtagger rename --global 'ADDRESS=Corrected name' 'OTHER_ADDRESS=Another name' --json
+0xtagger add 'ADDRESS=Established name'
+0xtagger rename 'ADDRESS=Corrected name' 'OTHER_ADDRESS=Another name' --json
 ```
 
 Both accept batches and `--file PATH` (`ADDRESS=Name` per line); rename takes one name/address. Concurrent edits reject the whole rename batch: look up and review before retrying.
 
-Use `--chain ID` for network roles; `--global` requires cross-chain identity or an explicit all-networks request. Writes affect exactly that scope; overrides remain. An unclear chain never justifies global.
+Default to all networks: omit scope flags, or use `--global`. Use `--chain ID` when the user requests a network-specific label. For corrections, look up the existing record and pass its chain when it is scoped to one network. Writes affect exactly that scope; existing overrides remain.
 
 Write exits: `1` means invalid input, missing rename targets, or configuration; `2` means failure or conflict; `3` from `add` names capacity omissions, not an outage. Unconfirmed writes may have landed: never retry blindly. Report only confirmed results or known omissions.

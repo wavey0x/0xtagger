@@ -486,10 +486,9 @@ export async function createPageController({
     const offered = display && adapter.names && adapter.source
       ? usableName(adapter.names(display, { address: target.address, url: url() })) : null;
     const suggestion = offered ? { name: offered, source: adapter.source } : null;
-    // A name accepted from a website belongs to the network that website was
-    // showing it on: a contract's label on one chain says nothing about the
-    // address on another. A name typed by hand keeps the scope it always had.
-    const scope = recordFor(target)?.scope || (suggestion && target.network) || 'global';
+    // Existing tags keep their scope. New tags start on all networks,
+    // including names suggested by the website.
+    const scope = recordFor(target)?.scope || 'global';
     editor = createEditor(overlay.box, { address: target.address, scope, newScope: 'global', state, save,
       suggestion,
       visibility,

@@ -75,11 +75,10 @@ export function createEditor(container, { address, scope: opened = 'global', sta
   const offered = suggestion?.name && usableName(suggestion.name) ? suggestion : null;
   const prefill = offered && !lines.length ? offered : null;
   // The last line is always there for a new tag, and saves like any other.
-  // A tag typed by hand is for the network the caller names: on a website
-  // that is all of them, since most addresses are the same contract
-  // everywhere. A name the website itself shows is for the website's network.
+  // New tags use the caller's default, including names the website suggests.
+  // Saved tags keep their scope.
   const blank = (tag = '', scope = newScope) => ({ tag, scope, saved: null, removed: false, moved: false });
-  let fresh = prefill ? blank(prefill.name, opened) : blank();
+  let fresh = prefill ? blank(prefill.name) : blank();
   // The new line shows only when it is needed: for an address with no tags,
   // or once "+" is pressed. Otherwise the list is just the tags.
   let adding = false;
@@ -275,7 +274,7 @@ export function createEditor(container, { address, scope: opened = 'global', sta
     get('.offer').replaceChildren();
     if (spare) {
       const button = element('button', 'Add', { type: 'button', class: 'quiet', 'aria-label': `Add tag ${offered.name}` });
-      button.onclick = () => { fresh.tag = offered.name; fresh.scope = opened; adding = true; renderLines(null); rowOf(fresh)?.querySelector('textarea').focus(); };
+      button.onclick = () => { fresh.tag = offered.name; fresh.scope = newScope; adding = true; renderLines(null); rowOf(fresh)?.querySelector('textarea').focus(); };
       get('.offer').append(element('span', offered.name), button);
     }
   }

@@ -332,12 +332,22 @@ def writes(book):
 
 
 @pytest.mark.parametrize('write', [cli.add, cli.rename])
-def test_writes_require_exactly_one_scope(write):
-    for argv in [[f'{ADDRESS}=Treasury'],
-                 ['--chain', '1', '--global', f'{ADDRESS}=Treasury']]:
+def test_writes_reject_conflicting_or_empty_scopes(write):
+    for argv in [['--chain', '1', '--global', f'{ADDRESS}=Treasury'],
+                 ['--chain', '', f'{ADDRESS}=Treasury']]:
         with pytest.raises(SystemExit) as refused:
             write(argv)
         assert refused.value.code == 1  # bad input never means book unavailable
+
+
+def test_writes_default_to_all_networks_and_preserve_chain_overrides(book):
+    assert cli.add(['--chain', '1', f'{ADDRESS}=Ethereum treasury']) == 0
+    assert cli.add([f'{ADDRESS}=Treasury']) == 0
+    before = held(book)[(ADDRESS, 'eip155:1')]
+    assert held(book)[(ADDRESS, 'global')]['tags'] == ['Treasury']
+    assert cli.rename([f'{ADDRESS}=Our treasury', '--json']) == 0
+    assert held(book)[(ADDRESS, 'global')]['tags'] == ['Our treasury']
+    assert held(book)[(ADDRESS, 'eip155:1')] == before
 
 
 @pytest.mark.parametrize('write', [cli.add, cli.rename])

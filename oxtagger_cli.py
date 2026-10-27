@@ -497,24 +497,23 @@ def write_input(argv: list[str], command: str, description: str) -> tuple[argpar
         epilog="Writes read the book's token from its configured file; it is never an argument.")
     parser.add_argument("name", nargs="*", metavar="ADDRESS=TAG",
                         help="one or more addresses and the name each one has")
-    scope_of = parser.add_mutually_exclusive_group(required=True)
+    scope_of = parser.add_mutually_exclusive_group()
     scope_of.add_argument("--chain", metavar="ID",
-                          help="the network these names were established on (the normal choice)")
+                          help="limit these names to one network instead of all networks")
     scope_of.add_argument("--global", dest="everywhere", action="store_true",
-                          help="name the address on every network: only for an identity "
-                               "the evidence shows holds across chains")
+                          help="name the address on all networks (the default)")
     parser.add_argument("--file", metavar="PATH",
                         help="read `ADDRESS Tag` lines from a file, or - for stdin")
     parser.add_argument("--json", action="store_true", help="machine-readable output")
     args = parser.parse_args(argv)
 
-    if args.chain and not CHAIN.fullmatch(args.chain):
-        sys.exit(f"{PROG}: not a chain id: {args.chain!r}")
+    if args.chain is not None and not CHAIN.fullmatch(args.chain):
+        parser.error(f"not a chain id: {args.chain!r}")
     if not args.name and not args.file:
         parser.print_help()
         return args, []
 
-    scope = "global" if args.everywhere else f"eip155:{args.chain}"
+    scope = f"eip155:{args.chain}" if args.chain else "global"
     names = additions_from(
         [*args.name, *(read_lines(args.file) if args.file else [])], scope)
     return args, names

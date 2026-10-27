@@ -803,16 +803,36 @@ test.describe('a name the website already shows', () => {
     await expect(fromSite(page)).toHaveCount(0);
   });
 
-  // A label belongs to the chain the page was showing it on. Saving an
-  // Ethereum contract's name to every network would put it against whatever
-  // sits at that address on Base.
-  test('saves a name to the network the website was showing', async ({ page }) => {
+  test('website suggestions default to all networks', async ({ page }) => {
     await open(page, labelled('row', other, 'Uniswap V3: Router'), [record]);
     await tagFor(page, 'row').click();
-    await expect(page.getByRole('dialog').locator('.save-scope')).toHaveText('Ethereum');
+    await expect(page.getByRole('dialog').locator('.save-scope')).toHaveText('All networks');
     await submit(page);
     await expect.poll(() => page.evaluate(() => window.saves.at(-1)))
-      .toMatchObject({ address: other, scope: 'eip155:1' });
+      .toMatchObject({ address: other, scope: 'global', source: 'etherscan:page' });
+  });
+
+  test('website suggestions use an explicitly selected network', async ({ page }) => {
+    await open(page, labelled('row', other, 'Uniswap V3: Router'), [record]);
+    await tagFor(page, 'row').click();
+    await page.getByRole('dialog').locator('.network').click();
+    await page.getByRole('listbox', { name: 'Save for' }).getByRole('option', { name: /Base/ }).click();
+    await submit(page);
+    await expect.poll(() => page.evaluate(() => window.saves.at(-1)))
+      .toMatchObject({ address: other, scope: 'eip155:8453', source: 'etherscan:page' });
+  });
+
+  test('adding a suggested name keeps saved network tags and defaults the new name to all networks', async ({ page }) => {
+    await open(page, labelled('row', other, 'Uniswap V3: Router'), [{ ...record, address: other, scope: 'eip155:1' }]);
+    await tagFor(page, 'row').click();
+    await expect(page.getByRole('dialog').locator('.save-scope').first()).toHaveText('Ethereum');
+    await offer(page).getByRole('button', { name: 'Add tag Uniswap V3: Router', exact: true }).click();
+    await submit(page);
+    expect(await page.evaluate(() => window.saves)).toEqual([
+      expect.objectContaining({ address: other, scope: 'global', tags: ['Uniswap V3: Router'] }),
+    ]);
+    expect(await page.evaluate(() => window.state.records.find(item => item.scope === 'eip155:1').tags))
+      .toEqual(['Treasury', 'Operations']);
   });
 
   // A name this editor put in the field itself is not something anyone typed,
@@ -884,7 +904,7 @@ test.describe('a name the website already shows', () => {
     await expect(fromSite(page)).toHaveText('(from Etherscan)');
     await submit(page);
     await expect.poll(() => page.evaluate(() => window.saves.at(-1)))
-      .toMatchObject({ address: other, scope: 'eip155:1', tags: ['Mog Coin'], source: 'etherscan:page' });
+      .toMatchObject({ address: other, scope: 'global', tags: ['Mog Coin'], source: 'etherscan:page' });
   });
 
   test('offers nothing for a token the row was cut short to name', async ({ page }) => {
@@ -926,11 +946,11 @@ test.describe('a name the website already shows', () => {
         await tagFor(page, 'token').click();
         await expect(input(page)).toHaveValue(name);
         await expect(fromSite(page)).toHaveText('(from Etherscan)');
-        await expect(page.getByRole('dialog').locator('.save-scope')).toHaveText('Ethereum');
+        await expect(page.getByRole('dialog').locator('.save-scope')).toHaveText('All networks');
         expect(await page.evaluate(() => window.saves)).toHaveLength(0);
         await submit(page);
         await expect.poll(() => page.evaluate(() => window.saves.at(-1)))
-          .toMatchObject({ address: token, scope: 'eip155:1', tags: [name], source: 'etherscan:page' });
+          .toMatchObject({ address: token, scope: 'global', tags: [name], source: 'etherscan:page' });
         await expect(page.locator('#token')).toHaveText('Staked Frax ... (sfrxUS...)');
         await page.locator('#token').click();
         expect(await page.evaluate(() => window.nativeClick)).toBe(`/token/${token}`);

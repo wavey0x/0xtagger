@@ -2,6 +2,37 @@ import { test, expect } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import { address, record, start } from '../../tests/browser/controller.js';
 
+test.use({ locale: 'en-US', timezoneId: 'UTC' });
+
+// Sample data, rendered by the same book used in the extension and on a server.
+// These are review images, kept separate from the behavioral test suite.
+test('capture the compact address book on light, dark and narrow surfaces', async ({ page }) => {
+  await mkdir('docs/images', { recursive: true });
+  await page.route('**/extension/book-extension.js', route => route.fulfill({ contentType: 'text/javascript', body: '' }));
+  for (const [theme, width] of [['dark', 1200], ['light', 1200], ['dark', 390]]) {
+    await page.setViewportSize({ width, height: 740 });
+    await page.emulateMedia({ colorScheme: theme });
+    await page.goto('/extension/book.html');
+    await page.evaluate(async () => {
+      const { startBook } = await import('/extension/book.js');
+      const names = ['Treasury', 'Operations Safe', 'Frax Finance: sfrxUSD Token', 'Curve: CRV Token',
+        'Revenue Splitter', 'Protocol Multisig', 'USDC Strategy', 'Governance Timelock',
+        'Core Contributors', 'Fee Receiver', 'Liquidity Operations', 'Reserve Vault'];
+      const state = { activeBook: 'demo', bookName: 'Personal', bookKind: 'server', stateRevision: 1,
+        books: [{ id: 'demo', name: 'Personal', kind: 'server', where: 'book.example' }],
+        syncedAt: '2026-10-27T16:00:00Z',
+        records: names.map((name, index) => ({ address: '0x' + (index + 10).toString(16).padStart(2, '0').repeat(20),
+          scope: index === 4 ? 'eip155:8453' : 'global', tags: [name], version: 'demo',
+          source: ['etherscan:page', 'arkham:api', 'agent'][index % 3] })),
+      };
+      await startBook({ rpc: async message => message.type === 'State' ? { state } : {}, watchBook: () => {} });
+      document.querySelector('#search').blur();
+      await document.fonts.ready;
+    });
+    await page.screenshot({ path: `docs/images/address-book-${width < 600 ? 'mobile' : theme}.png`, fullPage: true, animations: 'disabled' });
+  }
+});
+
 // The one still image the README shows. The moving demo beside it is recorded
 // by hand; everything here is drawn by the shipped controller over sample data,
 // so the picture cannot drift from what the extension actually does.

@@ -36,8 +36,7 @@ const picker = manageBooks ? bookPicker({
   // A refused name is reported in the row being typed in, so the picker keeps it.
   rename: async (book, name) => { await rpc({ type: 'RenameBook', book, name }); tell(''); },
 }) : () => {};
-$('#location').hidden = !manageBooks;
-$('#remove-book').hidden = !manageBooks;
+$('#location').closest('.connection-line').hidden = !manageBooks;
 function render(next = state) {
   if (!currentSnapshot(next, state)) return;
   if (next.activeBook !== state.activeBook) $('#search').value = '';

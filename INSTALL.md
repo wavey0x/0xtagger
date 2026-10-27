@@ -34,7 +34,7 @@ Open a supported website, then turn on the popup's **On this website** switch. T
 
 Click the purple tag glyph beside an address to edit its tags. The first tag is the default; + appends another and arrows reorder them. Enter saves; Escape or an outside click dismisses the draft. Turn off **Show tags** to temporarily reveal the website's original presentation for matching occurrences on that page. The popup's **On this website** switch restores every website default and persists across refreshes.
 
-An inline editor shows its Save scope beside the button. It keeps an existing record's scope, otherwise uses the website's network for a usable site name, otherwise all networks. A pasted address in the popup starts with an explicit **All networks** choice, because its source may have nothing to do with the active tab. The popup and full-page book can choose a network for new tags. Removing a network override reveals global tags. The address switch suppresses the whole replacement until restored or reset by refresh, navigation, or switching books. **Remove tags** in the book editor prepares a deletion; Save commits it.
+An inline editor shows its Save scope beside the button. New tags default to **All networks**, including names suggested by a website. Existing tags keep their saved scope. The popup and full-page book can choose a network for new tags. Removing a network override reveals global tags. The address switch suppresses the whole replacement until restored or reset by refresh, navigation, or switching books. **Remove tags** in the book editor prepares a deletion; Save commits it.
 
 ## Keep a book on a server
 
@@ -135,17 +135,17 @@ record. The existing first tag stays the displayed name; nothing is replaced
 or deleted.
 
 ```sh
-0xtagger add --chain 1 '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984=UNI Token'
-0xtagger add --chain 1 '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984=UNI Token' '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984=Uniswap Token'
+0xtagger add '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984=UNI Token'
+0xtagger add '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984=UNI Token' '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984=Uniswap Token'
 0xtagger add --chain 1 --file identities.txt   # `ADDRESS Tag` per line, # comments skipped
 0xtagger add --global '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045=vitalik.eth'
 ```
 
-`--chain` is the normal choice: a name established on one network belongs to
-that network. `--global` names the address everywhere and is for an identity
-the evidence shows holds across chains, never a fallback when the chain is
-unclear. One invocation carries one scope; run it again for another. The whole
-batch is checked before anything is sent and normally lands in one atomic
+Names default to all networks; `--global` makes that choice explicit.
+Use `--chain ID` to limit a name to one network. Existing scoped records keep
+their scope; pass that chain when renaming one. One invocation carries one
+scope; run it again for another. The whole batch is checked before anything
+is sent and normally lands in one atomic
 request. Repeated addresses collect tags in the order given. If only a global
 record exists, a chain addition creates a more specific record that becomes the
 displayed name on that chain. `Agent` is recorded as the source only

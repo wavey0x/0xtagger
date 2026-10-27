@@ -5,6 +5,7 @@ const base = 'http://127.0.0.1:8723/0xtagger';
 const address = '0x' + '12'.repeat(20);
 const imported = '0x' + '34'.repeat(20);
 const added = '0x' + '56'.repeat(20);
+const globalAdded = '0x' + '57'.repeat(20);
 const key = { Authorization: 'Bearer test-only-token' };
 
 test('hosted book: one server, scoped edits, stale writes and file round trip without a browser key', async ({ page }) => {
@@ -48,6 +49,14 @@ test('hosted book: one server, scoped edits, stale writes and file round trip wi
     await expect(page.locator('.record', { hasText: 'Saved by the extension' })).toHaveCount(1);
 
     await page.getByRole('button', { name: '+ Add address', exact: true }).click();
+    await page.locator('#manual-address').fill(globalAdded);
+    await page.getByRole('button', { name: 'Add tags', exact: true }).click();
+    await expect(page.getByRole('dialog').locator('.save-scope')).toHaveText('All networks');
+    await page.getByRole('textbox', { name: 'Tag 1', exact: true }).fill('An all-networks tag');
+    await page.getByRole('textbox', { name: 'Tag 1', exact: true }).press('Enter');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+
+    await page.getByRole('button', { name: '+ Add address', exact: true }).click();
     await page.locator('#manual-address').fill(added);
     await page.locator('#network').fill('10');
     await page.getByRole('button', { name: 'Add tags', exact: true }).click();
@@ -61,9 +70,10 @@ test('hosted book: one server, scoped edits, stale writes and file round trip wi
     await page.getByRole('button', { name: 'Import 1 name', exact: true }).click();
     await expect(page.locator('#review')).toBeHidden();
     await page.reload();
-    await expect(page.locator('#results tr')).toHaveCount(4);
+    await expect(page.locator('#results tr')).toHaveCount(5);
     records = (await (await api.get(base + '/tags')).json()).records;
     expect(records.find(item => item.address === added)).toMatchObject({ scope: 'eip155:10', tags: ['New Optimism tag'] });
+    expect(records.find(item => item.address === globalAdded)).toMatchObject({ scope: 'global', tags: ['An all-networks tag'] });
     expect(records.find(item => item.address === imported)).toMatchObject({ scope: 'eip155:8453', source: 'safe:address-book' });
 
     const downloaded = page.waitForEvent('download');
