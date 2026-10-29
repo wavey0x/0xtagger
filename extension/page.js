@@ -387,7 +387,7 @@ export async function createPageController({
     } catch (error) { fail(error.message); }
   }
   function schedule(root = doc) {
-    dirty.add(root);
+    dirty.add(adapter?.scanRoot?.(root) || root);
     // Far more branches than this and the whole document is the cheaper scan.
     if (dirty.size > 256) { dirty.clear(); dirty.add(doc); }
     if (!timer) timer = setTimeout(run, 40);

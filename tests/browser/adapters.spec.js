@@ -376,6 +376,81 @@ test.describe('Generic address text', () => {
   });
 });
 
+test.describe('Safe selected account', () => {
+  const site = `https://app.safe.global/transactions/queue?safe=oeth:${address}`;
+  const selector = (name = '0xabab...abab', at = address) => `<header>
+    <button data-testid="open-safes-icon" onclick="window.nativeOpened=true">Select Safe</button>
+    <div data-testid="safe-selector-trigger-details">
+      <div><span data-testid="safe-selector-trigger-name">${name}</span></div>
+      <div>
+        <span data-testid="safe-selector-trigger-address"><span>${at.slice(0, 6)}</span><span>${at.slice(6, -4)}</span><span>${at.slice(-4)}</span></span>
+        <span role="button" tabindex="0" aria-label="Copy address"
+          onclick="window.nativeCopied='${at}'">Copy</span>
+      </div>
+    </div>
+  </header><main>Transactions</main>`;
+
+  test('shows one tag in the header and preserves the address and native controls', async ({ page }) => {
+    await start(page, { site, html: selector() });
+    const name = page.getByTestId('safe-selector-trigger-name');
+    const nativeAddress = page.getByTestId('safe-selector-trigger-address');
+    await expect(name).toHaveAttribute('data-0xtagger-tag', 'Treasury');
+    await expect(page.locator('[data-0xtagger-tag]')).toHaveCount(1);
+    await expect(name).toHaveText('0xabab...abab');
+    await expect(nativeAddress).toHaveText(address);
+    await expect(nativeAddress).not.toHaveAttribute('data-0xtagger-tag');
+    await page.getByRole('button', { name: 'Copy address', exact: true }).click();
+    expect(await page.evaluate(() => window.nativeCopied)).toBe(address);
+    await page.getByRole('button', { name: 'Edit wallet tags', exact: true }).click();
+    await expect(page.getByRole('textbox', { name: 'Tag 1', exact: true })).toHaveValue('Treasury');
+    expect(await page.evaluate(() => window.nativeOpened)).toBeUndefined();
+    await page.keyboard.press('Escape');
+    await page.getByTestId('open-safes-icon').click();
+    expect(await page.evaluate(() => window.nativeOpened)).toBe(true);
+
+    await page.getByTestId('safe-selector-trigger-details').evaluate(node => { node.innerHTML = node.innerHTML; });
+    await expect(name).toHaveAttribute('data-0xtagger-tag', 'Treasury');
+    await expect(page.locator('[data-0xtagger-tag]')).toHaveCount(1);
+    await expect(page.getByRole('button', { name: 'Edit wallet tags', exact: true })).toHaveCount(1);
+  });
+
+  test('puts the tag on the account name when Safe has named it', async ({ page }) => {
+    await start(page, { site, html: selector('My Safe') });
+    await expect(page.getByTestId('safe-selector-trigger-name')).toHaveAttribute('data-0xtagger-tag', 'Treasury');
+    await expect(page.locator('[data-0xtagger-tag]')).toHaveCount(1);
+    await expect(page.getByTestId('safe-selector-trigger-address')).toHaveText(address);
+    await page.evaluate(() => window.controller.stop());
+    await expect(page.getByTestId('safe-selector-trigger-name')).toHaveText('My Safe');
+    await expect(page.getByTestId('safe-selector-trigger-address')).toHaveText(address);
+  });
+
+  test('requires the selected account URL and full address to agree', async ({ page }) => {
+    await start(page, { site, html: selector('My Safe', other),
+      records: [record, { ...record, address: other, tags: ['Other wallet'] }] });
+    await expect(page.locator('[data-0xtagger-address]')).toHaveCount(0);
+    expect(await health(page)).toMatchObject({ status: 'ready', network: 'eip155:10' });
+  });
+
+  test('rechecks the name when an account switch updates the address separately', async ({ page }) => {
+    await start(page, { site, html: selector('My Safe'),
+      records: [record, { ...record, address: other, tags: ['Other wallet'] }] });
+    const name = page.getByTestId('safe-selector-trigger-name');
+    await expect(name).toHaveAttribute('data-0xtagger-tag', 'Treasury');
+    await page.evaluate(({ other }) => {
+      window.site = new URL(`https://app.safe.global/transactions/queue?safe=oeth:${other}`);
+      window.controller.retry();
+    }, { other });
+    await expect(name).not.toHaveAttribute('data-0xtagger-address');
+    await page.getByTestId('safe-selector-trigger-address').evaluate((node, at) => { node.textContent = at; }, other);
+    await expect(name).toHaveAttribute('data-0xtagger-tag', 'Other wallet');
+    await expect(page.locator('[data-0xtagger-tag]')).toHaveCount(1);
+    // A later contradiction must also withdraw the tag on the sibling name.
+    await page.getByTestId('safe-selector-trigger-address').evaluate((node, at) => { node.textContent = at; }, address);
+    await expect(name).not.toHaveAttribute('data-0xtagger-address');
+    expect(await health(page)).toMatchObject({ status: 'ready', network: 'eip155:10' });
+  });
+});
+
 // Safe sets the name in a box of its own above the address, and sometimes puts
 // a badge beside it saying which of its books the name came from. Replacing the
 // name rather than the address is what keeps one name to a widget; leaving the

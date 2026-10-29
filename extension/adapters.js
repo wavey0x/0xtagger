@@ -9,6 +9,7 @@ import { addressLink, addressText, collect } from './detect.js';
 //   probe    whether the page is ready, still loading, or no longer recognized
 //   rules    where this site keeps address evidence (see detect.js)
 //   nameBefore  optional native address line before which a name can be shown
+//   scanRoot  optional enclosing widget whose identity must be rescanned together
 //   styles   CSS the site's own elements need while this adapter is active
 //   watch    extra attributes whose changes should trigger a rescan
 //
@@ -212,7 +213,10 @@ const etherscanAdapter = site({
   },
 });
 
-const SAFE_SELECTOR = '[data-testid="safe-selector-trigger-name"],[data-testid="safe-selector-trigger-address"]';
+const SAFE_SELECTOR_NAME = '[data-testid="safe-selector-trigger-name"]';
+const SAFE_SELECTOR_ADDRESS = '[data-testid="safe-selector-trigger-address"]';
+const SAFE_SELECTOR_DETAILS = '[data-testid="safe-selector-trigger-details"]';
+const SAFE_SELECTOR = `${SAFE_SELECTOR_NAME},${SAFE_SELECTOR_ADDRESS}`;
 const SAFE_WIDGET = '[class*="addressContainer"],[class*="EthHashInfo_container"],[class*="SrcEthHashInfo_container"]';
 // Safe's address widget sets the name in a box of its own, under a plain class
 // rather than a hashed one, and sometimes puts a badge beside it saying which
@@ -253,6 +257,9 @@ const safeAdapter = site({
   matches: url => url.hostname === 'app.safe.global',
   source: 'safe:page',
   nameBefore: safeNameBefore,
+  // The selected account's name depends on its sibling address, even when
+  // Safe updates that address without rebuilding or renaming the account.
+  scanRoot: root => root.closest?.(SAFE_SELECTOR_DETAILS) || root,
   // What Safe calls this address, read from the box it sets names in — never
   // from our own replacement, which lives in a stylesheet and leaves the title
   // alone. Safe's two placeholders name no wallet: one is the page talking
@@ -301,12 +308,18 @@ const safeAdapter = site({
     targets: `a[href*="/address/"],[data-address],[title],[class*="addressContainer"] span,main span,${SAFE_NAME_BOX},${SAFE_SELECTOR},${SAFE_COPIES} [class*="actorText"]`,
     attributes: ['data-address', 'title', 'aria-label'],
     identifies: ['data-address'],
-    // A name may stand in for the address only in the box Safe set it in, or
-    // on the audit log line that is about one signer and nothing else.
-    named: `${SAFE_NAME_BOX},${SAFE_COPIES} [class*="actorText"]`,
+    // A name may stand in for the address in Safe's name boxes, including the
+    // selected account, or on the audit line that is about one signer alone.
+    named: `${SAFE_NAME_BOX},${SAFE_SELECTOR_NAME},${SAFE_COPIES} [class*="actorText"]`,
     allowed: SAFE_COPIES,
     skip: element => {
-      if (element.matches(SAFE_NAME_BOX)) return false;
+      if (element.matches(`${SAFE_NAME_BOX},${SAFE_SELECTOR_NAME}`)) return false;
+      // The selected account has two rows: a name (or abbreviation) above its
+      // full address. Only the name owns the tag, including when Safe splits
+      // the address into spans or supplies a second display for small screens.
+      // seen: app.safe.global/transactions/queue?safe=oeth:0x6d447e544D01a59cb0774763bf15526574CffFeD
+      //       — open the queue and inspect the selected account — 2026-10-26.
+      if (element.closest(SAFE_SELECTOR_DETAILS)?.querySelector(SAFE_SELECTOR_NAME)) return true;
       // Safe bolds the first and last four digits of a scalar address. The
       // inner span still says one whole wallet; its outer copy span does not.
       // seen: app.safe.global/transactions/tx?safe=hyper-evm:0x518C21DC88D9780c0A1Be566433c571461A70149
@@ -337,6 +350,8 @@ const safeAdapter = site({
       if (copies) found.push(parseAddress(copies[0]));
       if (!element.matches(SAFE_SELECTOR)) return found;
       found.push(parseAddress(url.searchParams.get('safe')?.split(':')[1]));
+      const details = element.closest(SAFE_SELECTOR_DETAILS);
+      found.push(parseAddress(details?.querySelector(SAFE_SELECTOR_ADDRESS)?.textContent.trim()));
       const header = element.closest('header');
       if (header) found.push(...query(header, '[data-testid="safe-item-explorer-link"]').map(link => addressLink(link, url)?.address));
       return found;
