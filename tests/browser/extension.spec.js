@@ -801,3 +801,76 @@ test('installed extension: a file is reviewed before it lands, and a page cannot
     await context.close(); await rm(profile, { recursive: true, force: true });
   }
 });
+
+test('installed extension: descriptions stay in trusted views through reads, updates, saves and conflicts', async () => {
+  const profile = await mkdtemp(path.join(tmpdir(), '0xtagger-descriptions-'));
+  const extension = path.join(profile, 'extension');
+  await cp(path.resolve('extension'), extension, { recursive: true });
+  const manifest = JSON.parse(await readFile(path.join(extension, 'manifest.json'), 'utf8'));
+  manifest.host_permissions = ['http://127.0.0.1/*'];
+  await writeFile(path.join(extension, 'manifest.json'), JSON.stringify(manifest));
+  const context = await chromium.launchPersistentContext(profile, { channel: 'chromium', headless: true,
+    args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`] });
+  try {
+    const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
+    const id = worker.url().split('/')[2];
+    const book = await context.newPage();
+    await book.goto(`chrome-extension://${id}/book.html`);
+    await expect(book.locator('.book')).toBeVisible();
+    const rpc = message => book.evaluate(message => chrome.runtime.sendMessage(message), message);
+    const state = async () => (await rpc({ type: 'State' })).result.state;
+    const active = (await state()).activeBook;
+    const draft = { book: active, address, scope: 'global', tags: ['Investigated wallet'], version: null,
+      description: 'Private research context' };
+    expect((await rpc({ type: 'Save', draft })).ok).toBe(true);
+    const first = (await state()).records[0];
+    const website = await context.newPage();
+    await website.goto('http://127.0.0.1:8719/tests/fixtures/generic.html');
+    const [tab] = await book.evaluate(() => chrome.tabs.query({ url: 'http://127.0.0.1:8719/*' }));
+    expect((await rpc({ type: 'Site', tabId: tab.id, enabled: true })).ok).toBe(true);
+    await expect(website.locator('#wallet')).toHaveAttribute('data-0xtagger-tag', 'Investigated wallet');
+    const fromPage = async message => {
+      const result = await worker.evaluate(({ tabId, message }) => chrome.scripting.executeScript({
+        target: { tabId }, args: [message], func: message => chrome.runtime.sendMessage(message),
+      }), { tabId: tab.id, message });
+      return result[0].result;
+    };
+    const read = await fromPage({ type: 'State' });
+    expect(read.result.state.records[0]).not.toHaveProperty('description');
+    const rejected = await fromPage({ type: 'Save', draft: { ...draft, version: first.version, description: 'Replace private context' } });
+    expect(rejected.ok).toBe(false);
+    expect((await state()).records[0].description).toBe('Private research context');
+    await worker.evaluate(tabId => chrome.scripting.executeScript({ target: { tabId }, func: () => {
+      globalThis.descriptionMessages = [];
+      chrome.runtime.onMessage.addListener(message => { if (message.type === 'Updated') globalThis.descriptionMessages.push(message); });
+    } }), tab.id);
+    const { description, ...tagOnly } = draft;
+    expect((await fromPage({ type: 'Save', draft: { ...tagOnly, version: first.version, tags: ['Renamed wallet'] } })).ok).toBe(true);
+    const renamed = (await state()).records[0];
+    expect(renamed.description).toBe('Private research context');
+    expect((await rpc({ type: 'Save', draft: { ...draft, tags: renamed.tags, version: renamed.version,
+      description: 'Revised private context' } })).ok).toBe(true);
+    expect((await rpc({ type: 'RenameBook', book: active, name: 'Research' })).ok).toBe(true);
+    const conflict = await fromPage({ type: 'Save', draft: { ...tagOnly, version: first.version, tags: ['Stale name'] } });
+    expect(conflict.status).toBe(409);
+    expect(conflict.current.tags).toEqual(['Renamed wallet']);
+    expect(conflict.current).not.toHaveProperty('description');
+    const messages = async () => (await worker.evaluate(tabId => chrome.scripting.executeScript({
+      target: { tabId }, func: () => globalThis.descriptionMessages,
+    }), tab.id))[0].result;
+    await expect.poll(async () => (await messages()).some(message => message.state)).toBe(true);
+    const announced = await messages();
+    expect(announced.some(message => message.change)).toBe(true);
+    expect(JSON.stringify(announced)).not.toContain('description');
+    expect(JSON.stringify(announced)).not.toContain('private context');
+    await website.getByRole('button', { name: 'Edit wallet tags', exact: true }).first().click();
+    await expect(website.getByRole('dialog')).toBeVisible();
+    await expect(website.getByRole('textbox', { name: /Description/ })).toHaveCount(0);
+    expect(await website.locator('body').textContent()).not.toContain('private context');
+    await book.locator('.record', { hasText: 'Renamed wallet' }).click();
+    await expect(book.getByRole('textbox', { name: 'Description for All networks', exact: true })).toHaveValue('Revised private context');
+  } finally {
+    await context.close();
+    await rm(profile, { recursive: true, force: true });
+  }
+});

@@ -23,6 +23,7 @@ ADDRESS = re.compile(r"0x[0-9a-f]{40}", re.IGNORECASE)
 NETWORK = re.compile(r"eip155:([1-9][0-9]*)")
 MAX_TAGS = 32
 MAX_TAG_LENGTH = 80
+MAX_DESCRIPTION_LENGTH = 1024
 WEB_ASSETS = {
     'book-web.js', 'book.js', 'book.css', 'ui.js', 'ui.css', 'colors.js', 'colors.css',
     'store.js', 'records.js', 'stores/server.js', 'shared.js', 'networks.js',
@@ -54,10 +55,25 @@ def clean_tag(tag: str) -> str:
     return tag
 
 
+def clean_description(text: str) -> str:
+    text = text.replace("\r\n", "\n").replace("\r", "\n").strip()
+    # Do not echo a lone surrogate through the framework's UTF-8 error reply.
+    if any(0xD800 <= ord(c) <= 0xDFFF for c in text):
+        raise HTTPException(422, "Descriptions must contain valid Unicode text.")
+    if len(text) > MAX_DESCRIPTION_LENGTH or any(
+        ord(c) < 32 and c not in "\t\n" or ord(c) == 127
+        for c in text
+    ):
+        raise ValueError(f"Descriptions must contain at most {MAX_DESCRIPTION_LENGTH} characters and no control characters except tabs and line breaks.")
+    return text
+
+
 class TagWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
     tags: list[str] = Field(max_length=MAX_TAGS)
     version: str | None = Field(max_length=128)
+    # Omitted leaves the record's description as it is; "" clears it.
+    description: str = ""
     # Where a record came from, as a kind rather than a host. Set when the
     # record is created and never rewritten: it describes history, not
     # permission, and it ranks no name above another.
@@ -76,6 +92,11 @@ class TagWrite(BaseModel):
             seen.add(tag.casefold())
             cleaned.append(tag)
         return cleaned
+
+    @field_validator("description")
+    @classmethod
+    def clean_description(cls, text: str) -> str:
+        return clean_description(text)
 
 
 class TagChange(TagWrite):
@@ -123,6 +144,7 @@ def record(row: sqlite3.Row | None) -> dict | None:
         "tags": json.loads(row["tags_json"]),
         "version": row["version"],
         **({"source": row["source"]} if row["source"] else {}),
+        **({"description": row["description"]} if row["description"] else {}),
     }
 
 
@@ -151,6 +173,7 @@ def create_app(database: str | Path, token: str, *, tailscale_login: str | None 
                 tags_json TEXT NOT NULL,
                 version TEXT NOT NULL,
                 source TEXT,
+                description TEXT,
                 PRIMARY KEY (address, scope)
             )
         """)
@@ -159,6 +182,9 @@ def create_app(database: str | Path, token: str, *, tailscale_login: str | None 
         columns = {row["name"] for row in connection.execute("PRAGMA table_info(tags)")}
         if "source" not in columns:
             raise RuntimeError(f"{database} was written by an older 0xtagger. Delete it and start again.")
+        # Descriptions are an optional column, so adding it loses nothing.
+        if "description" not in columns:
+            connection.execute("ALTER TABLE tags ADD COLUMN description TEXT")
         # One number that changes whenever the book does. Asking "has anything
         # changed?" then costs a row, rather than the whole book over the wire.
         connection.execute("CREATE TABLE IF NOT EXISTS book (revision INTEGER NOT NULL)")
@@ -210,7 +236,7 @@ def create_app(database: str | Path, token: str, *, tailscale_login: str | None 
         return JSONResponse({"records": [record(row) for row in rows]}, headers={"ETag": mark})
 
     def apply(connection: sqlite3.Connection, address: str, scope: str,
-              tags: list[str], source_on_create: str | None) -> dict | None:
+              tags: list[str], source_on_create: str | None, description: str | None = None) -> dict | None:
         """Write one record inside a transaction the caller owns.
 
         It takes the tags themselves rather than a request model, because an
@@ -227,17 +253,22 @@ def create_app(database: str | Path, token: str, *, tailscale_login: str | None 
         # without a source stays without one, including on later edits.
         current = held(connection, address, scope)
         source = current["source"] if current is not None else source_on_create
+        # None means this write did not touch the description. An empty string
+        # explicitly clears it, including when a tag-only editor never saw it.
+        if description is None:
+            description = current["description"] if current is not None else None
         saved = {
             "address": address, "scope": scope,
             "tags": tags, "version": secrets.token_hex(16),
             **({"source": source} if source else {}),
+            **({"description": description} if description else {}),
         }
         connection.execute(
-            "INSERT INTO tags (address, scope, tags_json, version, source) VALUES (?, ?, ?, ?, ?) "
+            "INSERT INTO tags (address, scope, tags_json, version, source, description) VALUES (?, ?, ?, ?, ?, ?) "
             # `source` above is the source from creation, even when it is NULL.
             "ON CONFLICT(address, scope) DO UPDATE SET "
-            "tags_json=excluded.tags_json, version=excluded.version, source=excluded.source",
-            (address, scope, json.dumps(tags, ensure_ascii=False), saved["version"], source),
+            "tags_json=excluded.tags_json, version=excluded.version, source=excluded.source, description=excluded.description",
+            (address, scope, json.dumps(tags, ensure_ascii=False), saved["version"], source, description or None),
         )
         return saved
 
@@ -267,7 +298,8 @@ def create_app(database: str | Path, token: str, *, tailscale_login: str | None 
                         "detail": "Saved elsewhere while you were editing.",
                         "current": record(current),
                     })
-                saved = apply(connection, address, scope, change.tags, change.source)
+                saved = apply(connection, address, scope, change.tags, change.source,
+                              change.description if "description" in change.model_fields_set else None)
                 mark = bump(connection)
             return JSONResponse({"record": saved}, headers={"ETag": f'"{mark}"'})
 
@@ -302,7 +334,8 @@ def create_app(database: str | Path, token: str, *, tailscale_login: str | None 
                         "detail": "Saved elsewhere while this file was being added.",
                         "conflicts": conflicts,
                     })
-                saved = [apply(connection, address, scope, change.tags, change.source)
+                saved = [apply(connection, address, scope, change.tags, change.source,
+                               change.description if "description" in change.model_fields_set else None)
                          for address, scope, change in changes]
                 # A batch carrying nothing changes nothing, including the
                 # number that tells every reader the book moved.

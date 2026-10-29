@@ -380,17 +380,36 @@ def test_a_batch_carrying_nothing_moves_no_revision(book):
     assert book.get('/tags').headers['etag'] == mark
 
 
-def test_a_book_from_an_older_build_refuses_to_open(tmp_path):
-    """Greenfield: an old book is not upgraded in place, it is named and refused."""
+def old_book(tmp_path, extra_column=''):
     import sqlite3
     path = tmp_path / 'old.sqlite3'
     with sqlite3.connect(path) as connection:
         connection.execute(
             'CREATE TABLE tags (address TEXT NOT NULL, scope TEXT NOT NULL, '
-            'tags_json TEXT NOT NULL, version TEXT NOT NULL, PRIMARY KEY (address, scope))'
+            f'tags_json TEXT NOT NULL, version TEXT NOT NULL{extra_column}, PRIMARY KEY (address, scope))'
         )
+        connection.execute('INSERT INTO tags (address, scope, tags_json, version) VALUES (?, ?, ?, ?)',
+                           (ADDRESS, 'global', '["Keep me"]', 'old'))
+    return path
+
+
+def test_a_book_from_before_descriptions_gains_the_column(tmp_path):
+    path = old_book(tmp_path, ', source TEXT')
+    with TestClient(create_app(path, TOKEN), headers=HEADERS) as client:
+        records = client.get('/tags').json()['records']
+        assert records == [{'address': ADDRESS, 'scope': 'global', 'tags': ['Keep me'], 'version': 'old'}]
+        saved = client.put(f'/tags/global/{ADDRESS}', json={'tags': ['Keep me'], 'version': 'old', 'description': 'Context'})
+        assert saved.json()['record']['description'] == 'Context'
+
+
+def test_a_book_from_an_older_build_refuses_to_open(tmp_path):
+    """Greenfield: a book from before sources is not upgraded, it is named and refused."""
+    import sqlite3
+    path = old_book(tmp_path)
     with pytest.raises(RuntimeError, match='older 0xtagger'):
         create_app(path, TOKEN)
+    with sqlite3.connect(path) as connection:
+        assert connection.execute('SELECT tags_json FROM tags').fetchone()[0] == '["Keep me"]'
 
 
 def test_a_name_on_every_network_refuses_an_import_meant_to_be_new(book):
@@ -420,3 +439,48 @@ def test_an_import_meant_to_be_new_still_lands_where_nothing_names_it(book):
                            'tags': ['Payroll'], 'version': None, 'only_if_unnamed': True}])
     assert answer.status_code == 200
     assert answer.json()['records'][0]['tags'] == ['Payroll']
+
+
+def test_description_is_sparse_scoped_and_preserved_by_name_writes(book):
+    path = f'/tags/eip155:1/{ADDRESS}'
+    saved = book.put(path, json={'tags': ['Wallet'], 'version': None,
+                                'description': '  Funding link\r\nAttribution tentative.  '}).json()['record']
+    assert saved['description'] == 'Funding link\nAttribution tentative.'
+    global_record = put(book, ['Token']).json()['record']
+    assert 'description' not in global_record
+    renamed = book.put(path, json={'tags': ['Renamed'], 'version': saved['version']}).json()['record']
+    assert renamed['description'] == saved['description']
+    appended = add(book, [addition(scope='eip155:1', tags=['Alias'])]).json()['results'][0]['record']
+    assert appended['description'] == saved['description']
+    assert appended['tags'] == ['Renamed', 'Alias']
+    stale = book.put(path, json={'tags': appended['tags'], 'version': saved['version'], 'description': 'Stale'})
+    assert stale.status_code == 409
+    assert stale.json()['current']['description'] == saved['description']
+    cleared = batch(book, [{'address': ADDRESS, 'scope': 'eip155:1', 'tags': appended['tags'],
+                           'version': appended['version'], 'description': ''}]).json()['records'][0]
+    assert 'description' not in cleared
+    assert len(book.get('/tags').json()['records']) == 2
+    assert book.put(path, json={'tags': [], 'version': cleared['version']}).json() == {'record': None}
+
+
+@pytest.mark.parametrize('description', [None, 42, 'x' * 1025, 'bad\x00text', 'bad\ud800text'])
+def test_invalid_description_rejects_the_entire_batch(book, description):
+    changes = [
+        {'address': ADDRESS, 'scope': 'global', 'tags': ['First'], 'version': None},
+        {'address': '0x' + 'cd' * 20, 'scope': 'global', 'tags': ['Second'], 'version': None,
+         'description': description},
+    ]
+    result = book.put('/tags', content=json.dumps({'changes': changes}), headers={'Content-Type': 'application/json'})
+    assert result.status_code == 422
+    assert book.get('/tags').json()['records'] == []
+
+
+def test_description_limit_counts_unicode_characters_and_survives_restart(tmp_path):
+    database = tmp_path / 'book.sqlite3'
+    with TestClient(create_app(database, TOKEN), headers=HEADERS) as client:
+        saved = client.put(f'/tags/global/{ADDRESS}', json={
+            'tags': ['Wallet'], 'version': None, 'description': '😀' * 1024,
+        })
+        assert saved.status_code == 200
+    with TestClient(create_app(database, TOKEN), headers=HEADERS) as client:
+        assert client.get('/tags').json()['records'][0]['description'] == '😀' * 1024

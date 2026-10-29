@@ -1,4 +1,4 @@
-import { alreadyNamed, difference, findRecord, isLoopback, normalizeTags, normalizeScope, normalizeSource, parseAddress, recordKey, sameTags, validateImport } from './shared.js';
+import { alreadyNamed, difference, findRecord, isLoopback, matchesDraft, normalizeDescription, normalizeTags, normalizeScope, normalizeSource, parseAddress, recordKey, validateImport } from './shared.js';
 import { createRecords } from './records.js';
 import { createServerBook } from './stores/server.js';
 
@@ -362,6 +362,8 @@ export function createStore({ storage, fetch: fetcher, notify = () => {}, now = 
     if (!address) throw new Error('Use a full Ethereum address.');
     const scope = normalizeScope(draft.scope);
     const tags = normalizeTags(draft.tags);
+    const description = draft.description === undefined ? undefined : normalizeDescription(draft.description);
+    const content = { tags, description };
     const version = draft.version;
     if (!(version === null || typeof version === 'string')) throw new Error('Refresh this record before saving.');
     // Only ever an origin for a record being created; the book keeps the one a
@@ -388,7 +390,7 @@ export function createStore({ storage, fetch: fetcher, notify = () => {}, now = 
         if ((latest?.version || null) !== version) {
           // The book already holds what this draft asks for, so the interrupted
           // write landed. Nothing is in dispute; say so instead of asking.
-          if (sameTags(latest?.tags || [], tags)) { changed(); return {}; }
+          if (matchesDraft(latest, content)) { changed(); return {}; }
           const conflict = new Error('Saved elsewhere while you were editing.');
           conflict.current = latest;
           conflict.status = 409;
@@ -400,10 +402,10 @@ export function createStore({ storage, fetch: fetcher, notify = () => {}, now = 
       let saved;
       try {
         if (remote) {
-          saved = await remote.put({ address, scope, tags, version, source });
+          saved = await remote.put({ address, scope, tags, version, source, description });
           ({ revision } = await local.write(started, [saved || erase(address, scope)]));
         } else {
-          ({ record: saved, revision } = await local.save(started, { address, scope, tags, version, source }));
+          ({ record: saved, revision } = await local.save(started, { address, scope, tags, version, source, description }));
         }
       } catch (failure) {
         if (failure.status === 409) {
@@ -428,7 +430,7 @@ export function createStore({ storage, fetch: fetcher, notify = () => {}, now = 
           // Whoever got there first wrote the very tags this draft carries, so
           // the book says what it was asked to say. A refused write that leaves
           // nothing to decide is a save, not a conflict.
-          if (told && sameTags(current?.tags || [], tags)) return {};
+          if (told && matchesDraft(current, content)) return {};
         } else if (failure.status && failure.status < 500) {
           needsRefresh = false;
           if (remote) await saveSync();
@@ -452,8 +454,7 @@ export function createStore({ storage, fetch: fetcher, notify = () => {}, now = 
     if (into !== active) throw new Error('You switched address books. Open that one again to copy into it.');
     if (from === into || !entry(from)) throw new Error('There is nothing to copy.');
     const held = (await local.load(from)).records;
-    return merge(held.map(({ address, scope, tags, source }) =>
-      ({ address, scope, tags, ...(source ? { source } : {}) })), into);
+    return merge(held, into);
   }
 
   return { init, state, use, add, rename, remove, refresh, sync, heartbeat, merge, copyBook, save };

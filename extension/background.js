@@ -115,6 +115,15 @@ async function finishPendingSite() {
   if (!await chrome.permissions.contains({ origins: [hostPermission(held.origin)] })) return;
   await enableSite(held.origin);
 }
+// Research stays in 0xtagger's own views. Websites need tags and versions to
+// annotate and edit, but never descriptions, even in a conflict reply.
+function pageRecord(record) {
+  if (!record) return record;
+  const { description, ...visible } = record;
+  return visible;
+}
+const pageState = state => ({ ...state, records: state.records.map(pageRecord) });
+
 function broadcast(state, change) {
   // One record costs the same to send however large the book is; the whole
   // book costs the whole book, to every tab, every time.
@@ -125,9 +134,12 @@ function broadcast(state, change) {
   // hears it only where it was enabled, because that is the only place a
   // content script of ours is listening.
   chrome.runtime.sendMessage(message).catch(() => {});
+  const pageMessage = change
+    ? { ...message, change: { ...change, record: pageRecord(change.record) } }
+    : { ...message, state: pageState(state) };
   chrome.tabs.query({}).then(tabs => Promise.allSettled(tabs
     .filter(tab => tab.url && sites[new URL(tab.url).origin])
-    .map(tab => send(tab.id, message, {}))));
+    .map(tab => send(tab.id, pageMessage, {}))));
 }
 async function authorizedPage(sender) {
   if (sender.id !== chrome.runtime.id || !sender.tab || !/^https?:/.test(sender.url || '')) return false;
@@ -161,10 +173,14 @@ async function handle(message, sender) {
     if (view) await finishPendingSite().catch(() => {});
     const tabId = view ? message.tabId : sender.tab.id;
     if (view && tabId && !health.has(tabId)) await refreshAction(tabId);
-    return { state: store.state(), enabled: Boolean(page), ...(view ? { sites } : {}), health: health.get(tabId) || null };
+    const state = store.state();
+    return { state: view ? state : pageState(state), enabled: Boolean(page), ...(view ? { sites } : {}), health: health.get(tabId) || null };
   }
   if (!view && !page) throw new Error('This page is not enabled.');
-  if (message.type === 'Save') return store.save(message.draft);
+  if (message.type === 'Save') {
+    if (!view && Object.hasOwn(message.draft || {}, 'description')) throw new Error('Open 0xtagger to edit descriptions.');
+    return store.save(message.draft);
+  }
   if (message.type === 'Resume' || message.type === 'Sync') { store.sync().catch(() => {}); return {}; }
   if (message.type === 'Health' && page) {
     // The toolbar describes the outer page. Embedded views cannot replace its
@@ -235,7 +251,8 @@ async function handle(message, sender) {
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
   if (message?.type === 'Updated') return false;
   handle(message || {}, sender).then(result => reply({ ok: true, result }), error =>
-    reply({ ok: false, error: error.message, status: error.status, current: error.current }));
+    reply({ ok: false, error: error.message, status: error.status,
+      current: trustedView(sender) ? error.current : pageRecord(error.current) }));
   return true;
 });
 chrome.alarms.onAlarm.addListener(alarm => { if (alarm.name === 'sync') ready.then(() => store.heartbeat()).catch(() => {}); });

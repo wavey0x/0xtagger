@@ -2,6 +2,16 @@ import { scopeName } from './networks.js';
 
 export const MAX_TAGS = 32;
 export const MAX_TAG_LENGTH = 80;
+export const MAX_DESCRIPTION_LENGTH = 1024;
+
+export function normalizeDescription(value = '') {
+  if (typeof value !== 'string') throw new Error('Descriptions must be plain text.');
+  const text = value.replace(/\r\n?/g, '\n').trim();
+  if ([...text].length > MAX_DESCRIPTION_LENGTH || /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\ud800-\udfff]/u.test(text)) {
+    throw new Error(`Descriptions must contain at most ${MAX_DESCRIPTION_LENGTH} characters and no control characters except tabs and line breaks.`);
+  }
+  return text;
+}
 
 // Marks every element 0xtagger adds to a page. Nothing carrying it is website
 // content, so nothing carrying it is ever read as a wallet display.
@@ -116,6 +126,10 @@ export function filterEntries(entries, value) {
 // Records carry a source only when they have one, so a record composed by hand
 // is the plain object it has always been.
 const withSource = (record, source) => (source ? { ...record, source } : record);
+const withDescription = (record, value) => {
+  const description = normalizeDescription(value);
+  return description ? { ...record, description } : record;
+};
 
 // A name a website displays is worth offering back only if it is a name: not
 // an address or a piece of one, and nothing a tag could not hold anyway. Which
@@ -133,7 +147,7 @@ export function validateRecord(value) {
   if (!address || typeof value.version !== 'string' || !value.version || value.version.length > 128) throw new Error('The API returned an invalid record.');
   const tags = normalizeTags(value.tags);
   if (!tags.length) throw new Error('An API record cannot have an empty tag list.');
-  return withSource({ address, scope: normalizeScope(value.scope), tags, version: value.version }, normalizeSource(value.source));
+  return withDescription(withSource({ address, scope: normalizeScope(value.scope), tags, version: value.version }, normalizeSource(value.source)), value.description);
 }
 
 export function recordKey(address, scope = 'global') {
@@ -156,6 +170,13 @@ export function validateSnapshot(value) {
 // is the one a website shows.
 export function sameTags(left, right) {
   return left.length === right.length && left.every((tag, index) => tag === right[index]);
+}
+
+// Omitted descriptions are preserved by a write; an empty tag list deletes
+// the whole record. Confirm only the content the caller actually asked for.
+export function matchesDraft(record, { tags, description }) {
+  return sameTags(record?.tags || [], tags) &&
+    (!tags.length || description === undefined || (record?.description || '') === description);
 }
 
 export function findRecord(records, address, scope) {
@@ -277,7 +298,7 @@ function entryOf(item, seen) {
   const key = recordKey(address, scope);
   if (seen.has(key)) throw new Error('This address and network are already in the file.');
   seen.add(key);
-  return withSource({ address, scope, tags }, normalizeSource(item.source));
+  return withDescription(withSource({ address, scope, tags }, normalizeSource(item.source)), item.description);
 }
 
 export function validateImport(records) {

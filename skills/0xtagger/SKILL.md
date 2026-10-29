@@ -34,3 +34,9 @@ Both accept batches and `--file PATH` (`ADDRESS=Name` per line); rename takes on
 Default to all networks: omit scope flags, or use `--global`. Use `--chain ID` when the user requests a network-specific label. For corrections, look up the existing record and pass its chain when it is scoped to one network. Writes affect exactly that scope; existing overrides remain.
 
 Write exits: `1` means invalid input, missing rename targets, or configuration; `2` means failure or conflict; `3` from `add` names capacity omissions, not an outage. Unconfirmed writes may have landed: never retry blindly. Report only confirmed results or known omissions.
+
+## Descriptions
+
+Add an optional description only when it provides material utility beyond the tags: an investigated wallet's role, a useful relationship, or an attribution caveat. Keep it brief and evidence-based. Omit it for simple token names, obvious contract labels, or restatements of the name. Keep full research and transaction lists outside the book. Preserve existing descriptions during unrelated name changes.
+
+Use `0xtagger describe ADDRESS 'Useful context'` to set a description on an existing record; pass `''` to clear it. Scope flags work as for names. `lookup --json` includes saved descriptions. Description writes check the record version; on a conflict, look up and review before retrying. Do not squeeze context into aliases or bypass the CLI.

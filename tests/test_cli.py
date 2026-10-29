@@ -803,3 +803,74 @@ def test_a_redirect_is_not_followed():
     finally:
         httpd.shutdown()
     assert visited == ['/tags']
+
+
+def test_describe_sets_clears_and_preserves_names_sources_and_other_scopes(book, capsys):
+    cli.add([f'{ADDRESS}=Token'])
+    cli.add([f'{ADDRESS}=Chain wallet', '--chain', '1'])
+    original = held(book)[(ADDRESS, 'eip155:1')]
+    capsys.readouterr()
+    assert cli.describe([ADDRESS, '  Investigated funding role\r\nTentative attribution.  ', '--chain', '1', '--json']) == 0
+    result = json.loads(capsys.readouterr().out)['results'][0]
+    assert result['description'] == 'Investigated funding role\nTentative attribution.'
+    assert result['label'] == original['tags'][0] and result['source'] == original['source']
+    assert 'description' not in held(book)[(ADDRESS, 'global')]
+    assert cli.lookup([ADDRESS, '--chain', '1', '--json']) == 0
+    assert json.loads(capsys.readouterr().out)['results'][0]['description'] == result['description']
+    book.sent.clear()
+    assert cli.describe([ADDRESS, result['description'], '--chain', '1']) == 0
+    assert writes(book) == 0
+    assert cli.rename([f'{ADDRESS}=Corrected', '--chain', '1']) == 0
+    assert cli.add([f'{ADDRESS}=Alias', '--chain', '1']) == 0
+    assert held(book)[(ADDRESS, 'eip155:1')]['description'] == result['description']
+    assert cli.describe([ADDRESS, '', '--chain', '1', '--json']) == 0
+    assert 'description' not in held(book)[(ADDRESS, 'eip155:1')]
+
+
+@pytest.mark.parametrize('text', ['x' * 1025, 'bad\x00text', 'bad\ud800text'])
+def test_describe_rejects_invalid_text_before_accessing_the_book(book, text):
+    with pytest.raises(SystemExit):
+        cli.describe([ADDRESS, text])
+    assert book.sent == []
+
+
+def test_describe_requires_the_exact_existing_scope_and_a_version(book, monkeypatch):
+    cli.add([f'{ADDRESS}=Wallet'])
+    book.sent.clear()
+    with pytest.raises(SystemExit, match='not named'):
+        cli.describe([ADDRESS, 'Context', '--chain', '1'])
+    assert writes(book) == 0
+    monkeypatch.setattr(cli, 'records_of', lambda _: [{'address': ADDRESS, 'scope': 'global', 'tags': ['Wallet']}])
+    assert cli.describe([ADDRESS, 'Context']) == 2
+    assert writes(book) == 0
+
+
+@pytest.mark.parametrize('failure', ['conflict', 'lost', 'missing', 'wrong_description', 'wrong_tags', 'wrong_scope'])
+def test_describe_never_confirms_or_retries_an_unsaved_or_different_description(book, monkeypatch, capsys, failure):
+    cli.add([f'{ADDRESS}=Wallet'])
+    send = cli.request
+
+    def changed_reply(url, *, method='GET', **kwargs):
+        if method == 'PUT' and failure == 'conflict':
+            return 409, {'detail': 'Saved elsewhere'}
+        status, body = send(url, method=method, **kwargs)
+        if method == 'PUT':
+            if failure == 'lost':
+                raise cli.Unavailable('reply lost')
+            if failure == 'missing':
+                return status, {}
+            field, value = {'wrong_description': ('description', 'Other'),
+                            'wrong_tags': ('tags', ['Other']), 'wrong_scope': ('scope', 'eip155:1')}[failure]
+            body['records'][0][field] = value
+        return status, body
+
+    monkeypatch.setattr(cli, 'request', changed_reply)
+    book.sent.clear()
+    capsys.readouterr()
+    assert cli.describe([ADDRESS, 'Context', '--json']) == 2
+    answer = capsys.readouterr()
+    result = json.loads(answer.out)
+    assert result['results'] == []
+    assert result['unconfirmed'] is (failure != 'conflict')
+    assert writes(book) == (0 if failure == 'conflict' else 1)
+    assert TOKEN not in answer.out + answer.err

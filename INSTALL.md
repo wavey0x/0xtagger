@@ -194,6 +194,28 @@ confirms the requested names, `1` means invalid input, missing targets, or local
 configuration, and `2` means a read/write failure or conflict. An unconfirmed
 write may have landed: do not retry blindly.
 
+## Describe a researched wallet
+
+In the full-page address book, open a record and expand **Add description**.
+Descriptions are optional plain text, limited to 1,024 characters, and belong to
+the network shown beside the field. Use them when context adds value beyond a
+name; straightforward token labels usually need none.
+
+```sh
+0xtagger describe ADDRESS 'Funding wallet; attribution remains tentative.' --chain 1 --json
+0xtagger describe ADDRESS '' --chain 1   # clear the description
+```
+
+The record must already exist in that exact scope. Scope flags and credentials
+work as for names, and writes use the record's version. A conflict needs a fresh
+lookup and review; an unconfirmed write must not be retried blindly. Saved
+descriptions appear in `lookup --json`, exports, imports, and book copies.
+Adding or renaming tags preserves them. Removing a record's final tag deletes
+its description too. Imports continue to skip records already in the book.
+
+Descriptions are available in 0xtagger's own views and API, and are never sent
+to website tabs. They do not change website labels or tag search.
+
 ## Data and backups
 
 Choose a different port or data directory:

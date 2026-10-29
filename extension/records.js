@@ -67,9 +67,9 @@ export function createRecords({ indexedDB: factory = globalThis.indexedDB, keyRa
     return revision;
   }
   // A record with no tags is a record removed, the same as everywhere else.
-  function store(records, id, { address, scope, tags, version, source }) {
+  function store(records, id, { address, scope, tags, version, source, description }) {
     if (!tags.length) { records.delete([id, scope, address]); return null; }
-    const saved = { address, scope, tags, version: version || stamp(), ...(source ? { source } : {}) };
+    const saved = { address, scope, tags, version: version || stamp(), ...(source ? { source } : {}), ...(description ? { description } : {}) };
     records.put({ book: id, ...saved });
     return saved;
   }
@@ -85,7 +85,7 @@ export function createRecords({ indexedDB: factory = globalThis.indexedDB, keyRa
     },
     // One tag list, against the version it was read at. The check and the write are
     // the same transaction, so nothing can land between them.
-    async save(id, { address, scope, tags, version, source }) {
+    async save(id, { address, scope, tags, version, source, description }) {
       const [records, meta, transaction] = await begin();
       const held = await wrap(records.get([id, scope, address]));
       const existing = held ? validateRecord(held) : null;
@@ -99,7 +99,7 @@ export function createRecords({ indexedDB: factory = globalThis.indexedDB, keyRa
       // Where a record came from is settled when it is created. A later save
       // changes its tags, never the history of how it got here.
       const saved = store(records, id, { address, scope, tags, version: stamp(),
-        source: existing?.source ?? source });
+        source: existing?.source ?? source, description: description ?? existing?.description });
       const revision = await bumped(meta);
       await settled(transaction);
       return { record: saved, revision };

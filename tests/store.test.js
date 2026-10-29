@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { IDBFactory, IDBKeyRange as FakeKeyRange } from 'fake-indexeddb';
 import { createStore } from '../extension/store.js';
-import { applyChange, normalizeAPI, parseConnectLink, readBookFile, reviewImport, sourceName } from '../extension/shared.js';
+import { applyChange, normalizeAPI, normalizeDescription, parseConnectLink, readBookFile, reviewImport, sourceName, validateRecord } from '../extension/shared.js';
 
 const address = '0x' + 'ab'.repeat(20);
 const other = '0x' + 'cd'.repeat(20);
@@ -38,11 +38,12 @@ function harness({ remote = [], notify = () => {} } = {}) {
   // conditional read, one record at a time and many in one go.
   let revision = 0;
   const held = (address, scope) => book.find(item => item.address === address && item.scope === scope) || null;
-  const apply = ({ address, scope, tags, source }) => {
+  const apply = ({ address, scope, tags, source, description }) => {
     revision += 1;
     // As server.py does: an origin is settled when the record is created.
     const origin = held(address, scope)?.source || source || null;
-    const next = tags.length ? { address, scope, tags, version: 'v' + revision, ...(origin ? { source: origin } : {}) } : null;
+    const context = description ?? held(address, scope)?.description;
+    const next = tags.length ? { address, scope, tags, version: 'v' + revision, ...(origin ? { source: origin } : {}), ...(context ? { description: context } : {}) } : null;
     book = [...book.filter(item => item.address !== address || item.scope !== scope), ...(next ? [next] : [])];
     return next;
   };
@@ -64,7 +65,7 @@ function harness({ remote = [], notify = () => {} } = {}) {
     const [, scope, at] = path.split('/').map(decodeURIComponent).filter((_, index) => index !== 0);
     const current = held(at, scope);
     if (body.version !== (current?.version || null)) return response({ current }, 409, mark);
-    return response({ record: apply({ address: at, scope, tags: body.tags, source: body.source }) }, 200, `"${revision}"`);
+    return response({ record: apply({ address: at, scope, ...body }) }, 200, `"${revision}"`);
   };
   // One database per harness, so a restart reopens the same books and a
   // different test never sees them.
@@ -993,4 +994,99 @@ test('a book never offers to copy from itself, nor from one that is gone', async
   await store.remove(first);
   assert.equal(store.state().cameFrom, null, 'a book that is gone is not a source');
   await assert.rejects(store.copyBook(first, store.state().activeBook), /nothing to copy/);
+});
+
+test('descriptions are sparse, bounded Unicode text and never silently truncated', () => {
+  assert.equal(normalizeDescription('  Context\r\n\tEvidence  '), 'Context\n\tEvidence');
+  assert.equal(normalizeDescription('😀'.repeat(1024)).length, 2048);
+  for (const value of ['x'.repeat(1025), 'bad\x00text', 'bad\ud800text', null, 2]) {
+    assert.throws(() => normalizeDescription(value));
+  }
+  const plain = { address, scope: 'global', tags: ['Token'], version: 'one' };
+  assert.deepEqual(validateRecord(plain), plain);
+  assert.deepEqual(validateRecord({ ...plain, description: '  ' }), plain);
+});
+
+for (const kind of ['device', 'server']) {
+  test(`${kind} descriptions survive edits, restart, sync and explicit clearing`, async () => {
+    const fixture = harness();
+    const { store } = fixture;
+    await store.init();
+    if (kind === 'server') await store.add({ storage: onServer });
+    const save = (extra = {}) => store.save({ book: store.state().activeBook, address, scope: 'global',
+      tags: ['Research wallet'], version: store.state().records[0]?.version || null, ...extra });
+    await save({ description: '  Funding link\nAttribution tentative.  ', source: 'agent' });
+    let held = store.state().records[0];
+    assert.equal(held.description, 'Funding link\nAttribution tentative.');
+    await save({ tags: ['Renamed', 'Alias'] });
+    assert.equal(store.state().records[0].description, held.description);
+    const restarted = fixture.make();
+    await restarted.init();
+    await restarted.refresh();
+    assert.equal(restarted.state().records[0].description, held.description);
+    assert.equal(restarted.state().records[0].source, 'agent');
+    if (kind === 'server') {
+      fixture.remote()[0] = { ...fixture.remote()[0], description: 'Updated remotely', version: 'remote-edit' };
+      // Force a changed snapshot rather than a conditional unchanged reply.
+      fixture.intercept((url, options) => !options.method ? response({ records: fixture.remote() }) : null);
+      await store.refresh();
+      assert.equal(store.state().records[0].description, 'Updated remotely');
+    }
+    await save({ description: '' });
+    assert.equal('description' in store.state().records[0], false);
+    await save({ description: 'Will be removed' });
+    await save({ tags: [] });
+    assert.deepEqual(store.state().records, []);
+  });
+}
+
+test('descriptions round-trip through exports, imports and book copies; existing records stay intact', async () => {
+  const { store } = harness();
+  await store.init();
+  await store.save({ book: store.state().activeBook, address, scope: 'global', tags: ['Wallet'],
+    version: null, description: 'Useful context', source: 'agent' });
+  const first = store.state().activeBook;
+  const exported = readBookFile(JSON.stringify({ records: store.state().records })).records;
+  const second = harness().store;
+  await second.init();
+  await second.merge(exported);
+  assert.equal(second.state().records[0].description, 'Useful context');
+  const review = reviewImport([{ ...exported[0], description: 'Do not replace' }], second.state().records);
+  assert.equal(review.kept, 1);
+  assert.deepEqual(review.add, []);
+  await store.add({ storage: { kind: 'device' } });
+  await store.copyBook(first, store.state().activeBook);
+  assert.equal(store.state().records[0].description, 'Useful context');
+  await store.add({ storage: onServer });
+  await store.copyBook(first, store.state().activeBook);
+  assert.equal(store.state().records[0].description, 'Useful context');
+});
+
+test('matching tags cannot hide a conflicting description change', async () => {
+  const { store } = harness();
+  await store.init();
+  const draft = { book: store.state().activeBook, address, scope: 'global', tags: ['Wallet'], version: null };
+  await store.save({ ...draft, description: 'First' });
+  const version = store.state().records[0].version;
+  await store.save({ ...draft, version, description: 'Saved elsewhere' });
+  await assert.rejects(store.save({ ...draft, version, description: 'My stale draft' }), { status: 409 });
+  assert.equal(store.state().records[0].description, 'Saved elsewhere');
+});
+
+test('an interrupted description write is confirmed by its description, not matching tags', async () => {
+  const fixture = harness();
+  const { store } = fixture;
+  await store.init();
+  await store.add({ storage: onServer });
+  const draft = { book: store.state().activeBook, address, scope: 'global', tags: ['Wallet'], version: null };
+  await store.save({ ...draft, description: 'Original' });
+  draft.version = store.state().records[0].version;
+  fixture.intercept((url, options) => {
+    if (options.method === 'PUT') throw new Error('Never reached server');
+  });
+  await assert.rejects(store.save({ ...draft, description: 'Intended' }));
+  fixture.intercept(null);
+  fixture.remote()[0] = { ...fixture.remote()[0], description: 'Another edit', version: 'other' };
+  await assert.rejects(store.save({ ...draft, description: 'Intended' }), { status: 409 });
+  assert.equal(store.state().records[0].description, 'Another edit');
 });

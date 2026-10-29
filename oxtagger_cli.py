@@ -1,4 +1,4 @@
-"""One command for the book: serve it, look up, add, or rename an address.
+"""One command for the book: serve it, look up, name, or describe an address.
 
 Dispatch is standard-library only and the server is imported inside `serve`
 alone, because a lookup is the frequent operation and must not pay for a web
@@ -24,7 +24,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 PROG = "0xtagger"
-COMMANDS = ("serve", "lookup", "add", "rename")
+COMMANDS = ("serve", "lookup", "add", "rename", "describe")
 TIMEOUT = 10
 ADDRESS = re.compile(r"0x[0-9a-f]{40}", re.IGNORECASE)
 CHAIN = re.compile(r"[1-9][0-9]{0,19}")
@@ -53,6 +53,7 @@ SOURCE = "agent"
 # Mirrors MAX_TAG_LENGTH and the batch limit in server.py; checked here only to
 # fail before a round trip rather than after one.
 MAX_TAG_LENGTH = 80
+MAX_DESCRIPTION_LENGTH = 1024
 MAX_TAGS = 32
 MAX_CHANGES = 5000
 
@@ -264,6 +265,7 @@ def entry(record: dict) -> dict:
         "label": record["tags"][0], "tags": record["tags"][1:],
         "scope": record["scope"], "scope_name": scope_name(record["scope"]),
         "source": record.get("source"),
+        **({"description": record["description"]} if record.get("description") else {}),
     }
 
 
@@ -667,6 +669,71 @@ def rename(argv: list[str]) -> int:
 
 
 # ---------------------------------------------------------------------------
+# describe
+# ---------------------------------------------------------------------------
+
+def describe(argv: list[str]) -> int:
+    parser = CliParser(prog=f"{PROG} describe", description="Set useful context on an existing address record.")
+    parser.add_argument("address", help="one full Ethereum address")
+    parser.add_argument("text", help='plain text, at most 1024 characters; "" clears the description')
+    scope_flags = parser.add_mutually_exclusive_group()
+    scope_flags.add_argument("--chain", metavar="ID", help="edit this network's record")
+    scope_flags.add_argument("--global", dest="all_networks", action="store_true", help="edit the all-networks record (default)")
+    parser.add_argument("--json", action="store_true", help="machine-readable output")
+    args = parser.parse_args(argv)
+    address = normalize([args.address])[0]
+    if args.chain is not None and not CHAIN.fullmatch(args.chain):
+        parser.error(f"not a chain id: {args.chain!r}")
+    text = args.text.replace("\r\n", "\n").replace("\r", "\n").strip()
+    if len(text) > MAX_DESCRIPTION_LENGTH or re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\ud800-\udfff]", text):
+        parser.error("use at most 1024 characters and no control characters except tabs and line breaks")
+    scope = f"eip155:{args.chain}" if args.chain else "global"
+    unconfirmed = False
+    try:
+        book, token = book_url(), write_token()
+        current = next((record for record in records_of(book)
+                        if record["address"] == address and record["scope"] == scope), None)
+        if current is None:
+            sys.exit(f"{PROG}: {address} is not named on {scope_name(scope)}; use add first")
+        if (current.get("description") or "") != text:
+            version = current.get("version")
+            if not isinstance(version, str) or not version:
+                raise Unavailable("the book returned a record without a version; nothing was described")
+            change = {"address": address, "scope": scope, "tags": current["tags"],
+                      "version": version, "description": text}
+            unconfirmed = True
+            status, body = request(book + "/tags", method="PUT", token=token, body={"changes": [change]})
+            if status != 200:
+                unconfirmed = status not in {401, 403, 409, 422}
+                if status == 409:
+                    raise Unavailable("saved elsewhere; nothing was described. Look up and review before retrying")
+                raise Unavailable(f"the book answered {status}")
+            saved = body.get("records") if isinstance(body, dict) else None
+            if (not isinstance(saved, list) or len(saved) != 1 or not readable(saved[0])
+                    or any(saved[0].get(key) != change[key] for key in ("address", "scope", "tags"))
+                    or (saved[0].get("description") or "") != text
+                    or not isinstance(saved[0].get("version"), str) or not saved[0]["version"]):
+                raise Unavailable("the book did not confirm the description")
+            current = saved[0]
+    except Unconfigured as reason:
+        sys.exit(f"{PROG}: {reason}")
+    except Unavailable as reason:
+        problem = str(reason)
+        if unconfirmed:
+            problem += ". Whether the description landed is unknown; do not retry blindly"
+        if args.json:
+            print(json.dumps({"results": [], "error": problem, "unconfirmed": unconfirmed}, indent=2))
+        print(f"{PROG}: {problem}", file=sys.stderr)
+        return 2
+
+    if args.json:
+        report([entry(current)], book, True)
+    else:
+        print(f"{short(address)}  {scope_name(scope)}  Description {'saved' if text else 'cleared'}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # Dispatch
 # ---------------------------------------------------------------------------
 
@@ -676,6 +743,7 @@ USAGE = f"""usage: {PROG} <command> [options]
   lookup   what your book calls an Ethereum address
   add      record a name your work established
   rename   correct an existing primary name
+  describe set or clear useful context on an existing record
 
 `{PROG} <command> --help` describes one command.
 """
@@ -699,6 +767,8 @@ def main() -> int:
         return add(rest)
     if name == "rename":
         return rename(rest)
+    if name == "describe":
+        return describe(rest)
     sys.exit(f"{PROG}: no such command: {name!r}. Try: {', '.join(COMMANDS)}")
 
 

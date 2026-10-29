@@ -1,4 +1,4 @@
-import { findRecord, MAX_TAG_LENGTH, normalizeTags, sameTags, sourceName, usableName } from './shared.js';
+import { findRecord, MAX_DESCRIPTION_LENGTH, MAX_TAG_LENGTH, matchesDraft, normalizeDescription, normalizeTags, sameTags, sourceName, usableName } from './shared.js';
 import { checksumAddress } from './checksum.js';
 import { chainLogos } from './vendor/chain-logos.js';
 import { quickNetworks, scopeName, scopeSymbol } from './networks.js';
@@ -42,7 +42,7 @@ const REFUSED_STILL = [
 // Every tag is a line of its own with the network it is for. The book keeps one
 // list per network, so a line's network says which list its tag is in, and
 // saving a line rewrites that list (and the one it left, when it moved).
-export function createEditor(container, { address, scope: opened = 'global', state, save, close, onLayout = () => {}, visibility, toggleVisibility, suggestion = null, modal = false, newScope = opened }) {
+export function createEditor(container, { address, scope: opened = 'global', state, save, close, onLayout = () => {}, visibility, toggleVisibility, suggestion = null, modal = false, newScope = opened, descriptions = false }) {
   const book = state.activeBook;
   // Which book a save goes to only matters once there is more than one.
   const bookName = state.books.length > 1 ? state.bookName : '';
@@ -62,10 +62,12 @@ export function createEditor(container, { address, scope: opened = 'global', sta
   const known = scope => seen.get(scope) || { tags: [], version: null };
   const line = (tag, scope) => ({ tag, scope, saved: { tag, scope }, removed: false, moved: false });
   let lines = [];
+  let description = '';
   const read = from => {
     seen.clear();
     const held = from.records.filter(item => item.address === address).sort((a, b) => rank(a.scope) - rank(b.scope));
-    for (const record of held) seen.set(record.scope, { tags: record.tags, version: record.version || null });
+    for (const record of held) seen.set(record.scope, { tags: record.tags, version: record.version || null, description: record.description || '' });
+    description = known(opened).description || '';
     lines = held.flatMap(record => record.tags.map(tag => line(tag, record.scope)));
   };
   read(state);
@@ -90,7 +92,8 @@ export function createEditor(container, { address, scope: opened = 'global', sta
   // Treating it as an unsaved draft would make opening one address and then
   // another ask to save work nobody did.
   const untouched = () => Boolean(prefill) && !lines.length && fresh.tag.trim() === prefill.name;
-  const edited = () => !untouched() && all().some(pending);
+  const descriptionDirty = () => descriptions && description.replace(/\r\n?/g, '\n').trim() !== (known(opened).description || '');
+  const edited = () => (!untouched() && all().some(pending)) || descriptionDirty();
   let phase = 'idle';
   let closed = false;
   let activeState = state;
@@ -98,12 +101,31 @@ export function createEditor(container, { address, scope: opened = 'global', sta
 
   const panel = element(modal ? 'dialog' : 'section', undefined, { class: 'editor', role: 'dialog', 'aria-label': 'Edit wallet tags' });
   panel.innerHTML = `<header><span class="brand" role="img" aria-label="0xtagger">${EDITOR_MARK}<svg class="sheen" aria-hidden="true"><linearGradient id="brand-sheen" x1="0" y1="0" x2="1" y2="1"><stop offset="0"/><stop offset="1"/></linearGradient></svg></span><code></code><button type="button" class="quiet copy" aria-label="Copy">${COPY_ICON}</button><span class="source"></span>${visibility ? '<div class="visibility-group"><button type="button" class="quiet visibility" role="switch" aria-label="Show my tags for this address" aria-checked="true"></button></div>' : `<button type="button" class="quiet close" aria-label="Close editor" title="Close">${CLOSE_ICON}</button>`}</header>
-    <div class="lines"></div><div class="foot"><button type="button" class="quiet add" aria-label="Add tag" title="Add tag">${PLUS_ICON}</button><button type="button" class="quiet discard" title="Leave without saving (Esc)" hidden>Cancel</button></div><div class="networks" role="listbox" aria-label="Save for" popover="manual"></div>
+    <div class="lines"></div><div class="foot"><button type="button" class="quiet add" aria-label="Add tag" title="Add tag">${PLUS_ICON}</button><button type="button" class="quiet discard" title="Leave without saving (Esc)" hidden>Cancel</button></div>${descriptions ? `<details class="description"><summary></summary><textarea maxlength="${MAX_DESCRIPTION_LENGTH}" autocomplete="off" data-bwignore="true"></textarea></details>` : ''}<div class="networks" role="listbox" aria-label="Save for" popover="manual"></div>
     <p class="offer" hidden></p><p class="notice" role="status"></p><div class="conflict" hidden></div>
     <div class="extras">${modal && own ? '<button type="button" class="quiet clear">Remove tags</button>' : ''}</div>`;
   container.replaceChildren(panel);
   if (modal) panel.showModal();
   const get = selector => panel.querySelector(selector);
+  // A description belongs to the network the editor was opened for. Like the
+  // tags, it saves on leaving; Enter is a line break, so Cmd/Ctrl+Enter saves.
+  if (descriptions) {
+    const input = get('.description textarea');
+    input.setAttribute('aria-label', `Description for ${scopeName(opened)}`);
+    get('.description').open = Boolean(description);
+    input.oninput = () => { description = input.value; updateControls(); };
+    input.onkeydown = event => {
+      if (event.isTrusted && event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); commit(all().filter(pending)); }
+    };
+  }
+  function showDescription() {
+    if (!descriptions) return;
+    get('.description summary').textContent = `${description ? 'Description' : 'Add description'} · ${scopeName(opened)}`;
+    const input = get('.description textarea');
+    if (input.value !== description) input.value = description;
+    input.disabled = phase !== 'idle';
+    input.classList.toggle('dirty', descriptionDirty());
+  }
   // The whole address is in the text, so selecting or reading it gives all of
   // it; only its middle is folded away on screen.
   get('code').append(element('span', displayAddress.slice(0, 6)), element('span', displayAddress.slice(6, -4), { class: 'fold' }), element('span', displayAddress.slice(-4)));
@@ -311,6 +333,7 @@ export function createEditor(container, { address, scope: opened = 'global', sta
   }
   function updateControls() {
     updateVisibility();
+    showDescription();
     const busy = phase !== 'idle';
     panel.querySelectorAll('.row').forEach((row, index) => {
       const item = all()[index];
@@ -437,24 +460,29 @@ export function createEditor(container, { address, scope: opened = 'global', sta
       if (item.saved) touched.add(item.saved.scope);
       if (!item.removed && item.tag.trim()) touched.add(item.scope);
     }
+    if (descriptionDirty()) touched.add(opened);
     const lists = new Map([...touched].map(scope => [scope, []]));
     for (const item of all()) {
       const now = chosen.includes(item) ? (item.removed || !item.tag.trim() ? null : { tag: item.tag.trim(), scope: item.scope }) : item.saved;
       if (now && lists.has(now.scope)) lists.get(now.scope).push(now.tag);
     }
+    if (descriptionDirty() && !known(opened).tags.length && !lists.get(opened)?.length) {
+      throw new Error(`Add a tag for ${scopeName(opened)} before a description.`);
+    }
     // A tag moving to another network is written where it is going before it
     // is taken from where it was, so the page never shows the address bare in
     // between, and a save cut short leaves it in both lists rather than neither.
-    return [...lists].filter(([scope, tags]) => !sameTags(tags, known(scope).tags))
+    return [...lists].filter(([scope, tags]) => !sameTags(tags, known(scope).tags) || scope === opened && descriptionDirty())
       .sort(([, one], [, two]) => (one.length ? 0 : 1) - (two.length ? 0 : 1))
-      .map(([scope, tags]) => ({ scope, tags }));
+      .map(([scope, tags]) => ({ scope, tags,
+        ...(scope === opened && descriptionDirty() ? { description: normalizeDescription(description) } : {}) }));
   }
   // The version a write must match. After our own write the book's answer is
   // the new version; until it arrives, the copy this view holds says it.
   function versionOf(scope) {
     const mine = seen.get(scope);
     const held = findRecord(activeState.records, address, scope);
-    if (mine?.ours && held && sameTags(held.tags, mine.tags)) return held.version || null;
+    if (mine?.ours && held && matchesDraft(held, mine)) return held.version || null;
     return mine?.version ?? null;
   }
   // What a successful save leaves: the saved lines are plain again, removed
@@ -471,7 +499,7 @@ export function createEditor(container, { address, scope: opened = 'global', sta
   }
   let retry = null;
   async function commit(chosen, { next = false } = {}) {
-    if (closed || phase !== 'idle' || activeState.activeBook !== book || !chosen.length) return;
+    if (closed || phase !== 'idle' || activeState.activeBook !== book || (!chosen.length && !descriptionDirty())) return;
     let writes;
     try { writes = plan(chosen).map(entry => ({ ...entry, tags: normalizeTags(entry.tags) })); }
     catch (error) { get('.notice').textContent = error.message; queueMicrotask(onLayout); return; }
@@ -487,10 +515,11 @@ export function createEditor(container, { address, scope: opened = 'global', sta
         // hand, and carries no origin. The book keeps the origin of a record
         // that already has one, so this only ever names a record being created.
         const source = prefill && !known(entry.scope).version && entry.tags[0] === prefill.name ? prefill.source : undefined;
-        await save({ book, address, scope: entry.scope, tags: entry.tags, version: versionOf(entry.scope), source });
-        seen.set(entry.scope, { tags: entry.tags, version: versionOf(entry.scope), ours: true });
+        await save({ book, address, ...entry, version: versionOf(entry.scope), source });
+        seen.set(entry.scope, { ...known(entry.scope), ...entry, description: entry.tags.length ? entry.description ?? known(entry.scope).description ?? '' : '', version: versionOf(entry.scope), ours: true });
       }
       if (closed) return;
+      if (writes.some(entry => entry.scope === opened)) description = known(opened).description || '';
       settle(chosen, writes);
       phase = 'saved';
       guard();
@@ -535,12 +564,13 @@ export function createEditor(container, { address, scope: opened = 'global', sta
       // network. Show what it says and offer the two answers, each one click.
       if (error.status === 409 && at) {
         const scope = at;
-        const theirs = { tags: error.current?.tags || [], version: error.current?.version || null };
+        const theirs = { tags: error.current?.tags || [], version: error.current?.version || null, description: error.current?.description || '' };
         const box = get('.conflict');
         box.hidden = false;
         const take = element('button', 'Use these', { type: 'button', class: 'quiet' });
         take.onclick = () => {
           seen.set(scope, theirs);
+          if (scope === opened) description = theirs.description;
           const first = lines.findIndex(item => item.saved?.scope === scope);
           const kept = lines.filter(item => item.saved?.scope !== scope);
           kept.splice(first < 0 ? kept.length : first, 0, ...theirs.tags.map(tag => line(tag, scope)));
@@ -554,10 +584,12 @@ export function createEditor(container, { address, scope: opened = 'global', sta
         // to settle a conflict in favour of a draft nobody confirmed.
         keep.onclick = event => {
           if (!event.isTrusted) return;
-          seen.set(scope, { tags: theirs.tags, version: theirs.version });
+          if (scope === opened && !Object.hasOwn(writes.find(entry => entry.scope === scope) || {}, 'description')) description = theirs.description;
+          seen.set(scope, theirs);
           box.hidden = true; get('.notice').textContent = ''; retry?.();
         };
         box.replaceChildren(element('p', `${scopeName(scope)}: ${theirs.tags.join(' · ') || 'No tags'}`), take, keep);
+        if (descriptions && theirs.description) box.prepend(element('p', theirs.description));
       }
       updateControls();
       queueMicrotask(onLayout);
@@ -572,7 +604,7 @@ export function createEditor(container, { address, scope: opened = 'global', sta
       const waiting = all().filter(pending);
       // After "+", Enter keeps adding; naming a new address is usually one tag.
       const more = adding && event.target.closest('.row.fresh') && fresh.tag.trim() ? fresh.scope : false;
-      if (waiting.length) commit(waiting, { next: more });
+      if (waiting.length || descriptionDirty()) commit(waiting, { next: more });
       else finish();
     }
   });
@@ -601,7 +633,7 @@ export function createEditor(container, { address, scope: opened = 'global', sta
       activeState = next;
       for (const [scope, mine] of seen) {
         const held = findRecord(next.records, address, scope);
-        if (mine.ours && held && sameTags(held.tags, mine.tags)) seen.set(scope, { tags: held.tags, version: held.version || null });
+        if (mine.ours && held && matchesDraft(held, mine)) seen.set(scope, { tags: held.tags, version: held.version || null, description: held.description || '' });
         else if (mine.ours && !held && !mine.tags.length) seen.delete(scope);
       }
       if (phase === 'idle' && !edited()) {

@@ -75,7 +75,7 @@ function render(next = state) {
 async function edit(address, scope = 'global') {
   if (editor && !(await editor.leave())) return;
   if (editor) return;
-  editor = createEditor(shadow, { address, scope, state, modal: true,
+  editor = createEditor(shadow, { address, scope, state, modal: true, descriptions: true,
     save: draft => rpc({ type: 'Save', draft }),
     close: () => { editor = null; shadow.replaceChildren(); $('#search').focus(); },
   });

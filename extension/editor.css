@@ -38,6 +38,11 @@ code.whole .fold + span::before { content: none; }
 dialog.editor { width: 400px; }
 dialog.editor::backdrop { background: var(--0xtagger-backdrop); backdrop-filter: blur(2px); }
 .clear { color: var(--0xtagger-muted); font-size: 11px; padding: 6px 8px; }
+.description { margin-top: 6px; font-size: 11px; }
+.description summary { width: fit-content; cursor: pointer; color: var(--0xtagger-muted); font-weight: 650; }
+.description textarea { display: block; width: 100%; min-height: calc(2lh + 14px); max-height: calc(10lh + 14px); margin-top: 4px; padding: 7px 9px; color: var(--0xtagger-ink); background: var(--0xtagger-soft); border: 1px solid transparent; border-radius: 8px; font: inherit; font-size: 13px; line-height: 18px; field-sizing: content; resize: none; }
+.description textarea:focus-visible { outline: none; border-color: var(--0xtagger-line); }
+.description textarea.dirty { background: var(--0xtagger-accent-soft); border-color: color-mix(in srgb, var(--0xtagger-accent) 35%, transparent); }
 .source { flex: 1; min-width: 0; margin-left: 4px; padding-inline-start: 8px; border-inline-start: 1px solid var(--0xtagger-line); color: var(--0xtagger-muted); font-size: 10px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .source:empty { display: none; }
 header .close { margin-left: auto; }

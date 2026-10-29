@@ -1,4 +1,4 @@
-import { sameTags, validateRecord, validateSnapshot } from '../shared.js';
+import { matchesDraft, validateRecord, validateSnapshot } from '../shared.js';
 
 // A book kept by a server the person runs. This is only the transport: the
 // store above it owns the cached copy, so an unreachable server costs freshness
@@ -53,20 +53,20 @@ export function createServerBook({ url, token, fetch: fetcher = globalThis.fetch
     return { body, mark };
   }
 
-  function confirm(saved, { address, scope, tags }) {
+  function confirm(saved, { address, scope, tags, description }) {
     if ((saved && (saved.address !== address || saved.scope !== scope ||
-         !sameTags(saved.tags, tags))) ||
+         !matchesDraft(saved, { tags, description }))) ||
         (!saved && tags.length) || (saved && !tags.length)) {
       throw new Error('That server confirmed a different record. Refresh before trying again.');
     }
     return saved;
   }
 
-  async function put({ address, scope, tags, version, source }) {
+  async function put({ address, scope, tags, version, source, description }) {
     const { body } = await request(`/tags/${encodeURIComponent(scope)}/${address}`, {
-      method: 'PUT', body: JSON.stringify({ tags, version, source: source ?? null }),
+      method: 'PUT', body: JSON.stringify({ tags, version, source: source ?? null, description }),
     });
-    return confirm(body.record === null ? null : validateRecord(body.record), { address, scope, tags });
+    return confirm(body.record === null ? null : validateRecord(body.record), { address, scope, tags, description });
   }
 
   return {

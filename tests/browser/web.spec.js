@@ -238,3 +238,80 @@ test('hosted book: a server returning without an online event refreshes the save
     await expect(page.locator('#sync')).toContainText('Synced');
   } finally { await api.dispose(); }
 });
+
+test('hosted descriptions use the selected scope and existing save, conflict and discard flow', async ({ page }) => {
+  const api = await request.newContext({ extraHTTPHeaders: key });
+  const at = '0x' + '78'.repeat(20);
+  const recordPath = `${base}/tags/global/${at}`;
+  const read = async () => (await (await api.get(base + '/tags')).json()).records.find(record => record.address === at && record.scope === 'global');
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.setExtraHTTPHeaders({ 'Tailscale-User-Login': 'test@example.com' });
+  try {
+    expect((await api.put(recordPath, { data: { tags: ['Research wallet'], version: null,
+      description: 'Funding role\nAttribution tentative.' } })).ok()).toBe(true);
+    expect((await api.put(`${base}/tags/eip155:1/${at}`, { data: { tags: ['Ethereum research'], version: null,
+      description: 'Ethereum votes' } })).ok()).toBe(true);
+    await page.goto(base + '/');
+    const open = () => page.locator('.record', { hasText: 'Research wallet' }).click();
+    const description = page.getByRole('textbox', { name: 'Description for All networks', exact: true });
+    await open();
+    await expect(description).toHaveValue('Funding role\nAttribution tentative.');
+    await description.fill('Revised context');
+    await description.press('End');
+    await description.press('Enter');
+    await description.pressSequentially('Evidence dated 2026.');
+    expect((await read()).description).toBe('Funding role\nAttribution tentative.');
+    await description.press('ControlOrMeta+Enter');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    expect((await read()).description).toBe('Revised context\nEvidence dated 2026.');
+    expect((await read()).tags).toEqual(['Research wallet']);
+
+    await open();
+    await description.fill('My draft');
+    const held = await read();
+    expect((await api.put(recordPath, { data: { tags: held.tags, version: held.version, description: 'Saved elsewhere' } })).ok()).toBe(true);
+    await page.getByRole('button', { name: 'Close editor', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Keep mine', exact: true })).toBeVisible();
+    expect((await read()).description).toBe('Saved elsewhere');
+    await page.getByRole('button', { name: 'Keep mine', exact: true }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    expect((await read()).description).toBe('My draft');
+
+    await open();
+    await description.fill('x'.repeat(1025));
+    await expect(description).toHaveValue('x'.repeat(1024));
+    await description.press('Escape');
+    await open();
+    await expect(description).toHaveValue('My draft');
+    await description.fill('Discard this');
+    await description.press('Escape');
+    expect((await read()).description).toBe('My draft');
+
+    await open();
+    await description.fill('');
+    await description.press('ControlOrMeta+Enter');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    expect(await read()).not.toHaveProperty('description');
+    await open();
+    await expect(description).toBeHidden();
+    await page.getByRole('textbox', { name: 'Tag 1', exact: true }).press('Escape');
+    await page.locator('.record', { hasText: 'Ethereum research' }).click();
+    await expect(page.getByRole('textbox', { name: 'Description for Ethereum', exact: true })).toHaveValue('Ethereum votes');
+    await page.getByRole('textbox', { name: 'Tag 1', exact: true }).press('Escape');
+
+    const created = '0x' + '79'.repeat(20);
+    await page.getByRole('button', { name: '+ Add address', exact: true }).click();
+    await page.locator('#manual-address').fill(created);
+    await page.locator('#network').fill('10');
+    await page.getByRole('button', { name: 'Add tags', exact: true }).click();
+    await page.getByRole('textbox', { name: 'Tag 1', exact: true }).fill('New investigated wallet');
+    await page.getByText('Add description · Optimism', { exact: true }).click();
+    await page.getByRole('textbox', { name: 'Description for Optimism', exact: true }).fill('Observed funding role');
+    await page.getByRole('textbox', { name: 'Tag 1', exact: true }).press('Enter');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    const newRecord = (await (await api.get(base + '/tags')).json()).records.find(record => record.address === created);
+    expect(newRecord).toMatchObject({ scope: 'eip155:10', tags: ['New investigated wallet'], description: 'Observed funding role' });
+    expect(errors).toEqual([]);
+  } finally { await api.dispose(); }
+});
