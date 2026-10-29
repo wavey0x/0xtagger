@@ -133,7 +133,7 @@ header .close { margin-left: auto; }
 .conflict button { padding: 4px 0; font-size: 11px; color: var(--0xtagger-accent); }
 .conflict button + button { margin-left: 14px; }
 /* The tag itself catches the light; the button adds no plate or border. */
-.inline-tag { display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 3px; color: var(--0xtagger-accent); background: transparent; transition: color 150ms ease; }
+.inline-tag { display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 3px; color: var(--0xtagger-accent); background: transparent; }
 .inline-tag svg { width: 14px; height: 14px; pointer-events: none; transform-origin: center; transition: transform 100ms ease-out, filter 150ms ease; }
 .inline-tag .tag-body { fill: transparent; transition: fill 150ms ease; }
 .inline-tag .tag-gloss { stroke: white; stroke-width: .9; opacity: 0; transition: opacity 150ms ease; }
