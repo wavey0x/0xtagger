@@ -73,9 +73,8 @@ export function createEditor(container, { address, scope: opened = 'global', sta
   read(state);
   // What the website calls this address. Where nothing is saved it is a
   // starting value, so saving is the only thing left to do. Where something is
-  // saved the address is settled, and the site's name is only ever offered.
-  const offered = suggestion?.name && usableName(suggestion.name) ? suggestion : null;
-  const prefill = offered && !lines.length ? offered : null;
+  // saved the address is settled, and the site's name is not mentioned.
+  const prefill = suggestion?.name && usableName(suggestion.name) && !lines.length ? suggestion : null;
   // The last line is always there for a new tag, and saves like any other.
   // New tags use the caller's default, including names the website suggests.
   // Saved tags keep their scope.
@@ -102,7 +101,7 @@ export function createEditor(container, { address, scope: opened = 'global', sta
   const panel = element(modal ? 'dialog' : 'section', undefined, { class: 'editor', role: 'dialog', 'aria-label': 'Edit wallet tags' });
   panel.innerHTML = `<header><span class="brand" role="img" aria-label="0xtagger">${EDITOR_MARK}<svg class="sheen" aria-hidden="true"><linearGradient id="brand-sheen" x1="0" y1="0" x2="1" y2="1"><stop offset="0"/><stop offset="1"/></linearGradient></svg></span><code></code><button type="button" class="quiet copy" aria-label="Copy">${COPY_ICON}</button><span class="source"></span>${visibility ? '<div class="visibility-group"><button type="button" class="quiet visibility" role="switch" aria-label="Show my tags for this address" aria-checked="true"></button></div>' : `<button type="button" class="quiet close" aria-label="Close editor" title="Close">${CLOSE_ICON}</button>`}</header>
     <div class="lines"></div><div class="foot"><button type="button" class="quiet add" aria-label="Add tag" title="Add tag">${PLUS_ICON}</button><button type="button" class="quiet discard" title="Leave without saving (Esc)" hidden>Cancel</button></div>${descriptions ? `<details class="description"><summary></summary><textarea maxlength="${MAX_DESCRIPTION_LENGTH}" autocomplete="off" data-bwignore="true"></textarea></details>` : ''}<div class="networks" role="listbox" aria-label="Save for" popover="manual"></div>
-    <p class="offer" hidden></p><p class="notice" role="status"></p><div class="conflict" hidden></div>
+    <p class="notice" role="status"></p><div class="conflict" hidden></div>
     <div class="extras">${modal && own ? '<button type="button" class="quiet clear">Remove tags</button>' : ''}</div>`;
   container.replaceChildren(panel);
   if (modal) panel.showModal();
@@ -277,9 +276,6 @@ export function createEditor(container, { address, scope: opened = 'global', sta
   // It describes the words in the field and nothing else, so it goes the
   // moment they stop being the website's. A record already saved never shows
   // it: those words are yours whatever they were read from.
-  //
-  // The offer below is for an address already named: the site's other name is
-  // shown, never substituted, and taking it puts it on the new line.
   function attribution() {
     const live = Boolean(prefill) && fresh.tag === prefill.name;
     const row = rowOf(fresh);
@@ -290,14 +286,6 @@ export function createEditor(container, { address, scope: opened = 'global', sta
       const note = element('small', `(from ${sourceName(prefill.source)})`, { class: 'from', id: 'from-site' });
       field.after(note);
       field.setAttribute('aria-describedby', 'from-site');
-    }
-    const spare = offered && !prefill && !all().some(item => item.tag.trim() === offered.name);
-    get('.offer').hidden = !spare;
-    get('.offer').replaceChildren();
-    if (spare) {
-      const button = element('button', 'Add', { type: 'button', class: 'quiet', 'aria-label': `Add tag ${offered.name}` });
-      button.onclick = () => { fresh.tag = offered.name; fresh.scope = newScope; adding = true; renderLines(null); rowOf(fresh)?.querySelector('textarea').focus(); };
-      get('.offer').append(element('span', offered.name), button);
     }
   }
   function guard() {

@@ -643,7 +643,7 @@ test.describe('Safe address widget', () => {
       await expect(page.locator('#name')).toHaveAttribute('data-0xtagger-address', address);
       await page.locator('#name + [data-0xtagger-edit], #name [data-0xtagger-edit]').getByRole('button').click();
       await expect(page.getByRole('textbox', { name: 'Tag 1', exact: true })).toHaveValue('Treasury');
-      await expect(page.getByRole('dialog').locator('.offer')).toBeHidden();
+      await expect(page.getByRole('dialog')).not.toContainText(placeholder);
       await page.keyboard.press('Escape');
     }
   });

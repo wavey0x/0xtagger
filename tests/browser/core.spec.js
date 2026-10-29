@@ -735,16 +735,15 @@ test('a website surface is read from what the browser actually paints', async ({
   }
 });
 
-// What a website already calls an address is a starting value, offered only
-// once the editor is open. It is never a claim about who the address is, and
-// it never competes with a name already saved.
+// What a website already calls an address is a starting value for an unnamed
+// address, filled in once the editor is open. It is never a claim about who
+// the address is, and it never competes with a name already saved.
 test.describe('a name the website already shows', () => {
   const labelled = (id, at, name) =>
     `<p><a id="${id}" href="/address/${at}"><span class="hash-tag">${name}</span></a></p>`;
   const open = (page, html, records) =>
     start(page, { html: `<header>Explorer</header><main>${html}</main>`, records });
   const fromSite = page => page.getByRole('dialog').locator('.row .from');
-  const offer = page => page.getByRole('dialog').locator('.offer');
 
   test('fills an unnamed address with the site\'s name, selected and marked as theirs', async ({ page }) => {
     await open(page, labelled('row', other, 'Uniswap V3: Router'), [record]);
@@ -781,26 +780,13 @@ test.describe('a name the website already shows', () => {
     expect(written.source).toBe(undefined);
   });
 
-  // A saved address is settled. The site's name is shown, never substituted,
-  // and adding it appends: the preferred name stays the preferred name.
-  test('an address already named is offered the site\'s name, never filled with it', async ({ page }) => {
+  // A saved address is settled: the site's name is neither filled in nor offered.
+  test('an address already named shows only its saved tags', async ({ page }) => {
     await open(page, labelled('row', address, 'Uniswap V3: Router'), [record]);
     await tagFor(page, 'row').click();
     await expect(input(page)).toHaveValue('Treasury');
     await expect(fromSite(page)).toHaveCount(0);
-    await expect(offer(page)).toContainText('Uniswap V3: Router');
-    await offer(page).getByRole('button', { name: 'Add tag Uniswap V3: Router', exact: true }).click();
-    await submit(page);
-    await expect.poll(() => page.evaluate(() => window.saves.at(-1))).toMatchObject({
-      tags: ['Treasury', 'Operations', 'Uniswap V3: Router'],
-    });
-  });
-
-  test('says nothing when the site agrees with a name already saved', async ({ page }) => {
-    await open(page, labelled('row', address, 'Treasury'), [record]);
-    await tagFor(page, 'row').click();
-    await expect(offer(page)).toBeHidden();
-    await expect(fromSite(page)).toHaveCount(0);
+    await expect(page.getByRole('dialog')).not.toContainText('Uniswap V3: Router');
   });
 
   test('website suggestions default to all networks', async ({ page }) => {
@@ -820,19 +806,6 @@ test.describe('a name the website already shows', () => {
     await submit(page);
     await expect.poll(() => page.evaluate(() => window.saves.at(-1)))
       .toMatchObject({ address: other, scope: 'eip155:8453', source: 'etherscan:page' });
-  });
-
-  test('adding a suggested name keeps saved network tags and defaults the new name to all networks', async ({ page }) => {
-    await open(page, labelled('row', other, 'Uniswap V3: Router'), [{ ...record, address: other, scope: 'eip155:1' }]);
-    await tagFor(page, 'row').click();
-    await expect(page.getByRole('dialog').locator('.save-scope').first()).toHaveText('Ethereum');
-    await offer(page).getByRole('button', { name: 'Add tag Uniswap V3: Router', exact: true }).click();
-    await submit(page);
-    expect(await page.evaluate(() => window.saves)).toEqual([
-      expect.objectContaining({ address: other, scope: 'global', tags: ['Uniswap V3: Router'] }),
-    ]);
-    expect(await page.evaluate(() => window.state.records.find(item => item.scope === 'eip155:1').tags))
-      .toEqual(['Treasury', 'Operations']);
   });
 
   // A name this editor put in the field itself is not something anyone typed,
@@ -965,11 +938,11 @@ test.describe('a name the website already shows', () => {
       await expect(input(page)).toHaveValue('Staked Frax USD');
     });
 
-    test('offers the log label without replacing saved tags', async ({ page }) => {
+    test('leaves saved tags alone when the log has a label', async ({ page }) => {
       await openToken(page, [{ ...record, address: token }]);
       await tagFor(page, 'token').click();
       await expect(input(page)).toHaveValue('Treasury');
-      await expect(offer(page)).toContainText(name);
+      await expect(page.getByRole('dialog')).not.toContainText(name);
       expect(await page.evaluate(() => window.saves)).toHaveLength(0);
     });
 

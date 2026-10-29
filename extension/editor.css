@@ -122,16 +122,11 @@ header .close { margin-left: auto; }
 .row.saved { background: color-mix(in srgb, var(--0xtagger-success-fill) 10%, transparent); transition: background 200ms ease; }
 .extras { display: flex; align-items: center; margin-top: 6px; }
 .extras:not(:has(> :not([hidden]))) { display: none; }
-.notice,.offer { font-size: 11px; margin: 8px 0 0; overflow-wrap: anywhere; }
+.notice { font-size: 11px; margin: 8px 0 0; overflow-wrap: anywhere; color: var(--0xtagger-warning); }
 /* Whose words are in the field, said beside them and never saved with them.
    It holds its width, and a long name wraps beside it rather than fighting
    it for room. */
 .row .from { flex-shrink: 0; margin: 6px 2px 0 0; color: var(--0xtagger-muted); font-size: 10px; font-weight: 600; white-space: nowrap; }
-/* What a site calls an address you have already named: available, never loud. */
-.offer { display: flex; align-items: baseline; gap: 8px; color: var(--0xtagger-muted); }
-.offer span { overflow-wrap: anywhere; }
-.offer button { flex-shrink: 0; padding: 0; font-size: 11px; color: var(--0xtagger-accent); }
-.notice { color: var(--0xtagger-warning); }
 .notice:empty { display: none; }
 .conflict { margin-top: 8px; padding: 8px; border-radius: 7px; background: var(--0xtagger-soft); font-size: 11px; }
 .conflict p { margin: 0 0 5px; }
