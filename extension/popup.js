@@ -121,6 +121,7 @@ function resultRow(record, { name = record.tags[0], others = 0, address = '', no
   const row = node('div', 'lookup-row');
   const item = node('button', 'lookup-item');
   item.type = 'button';
+  item.dataset.tip = name;
   const head = node('span', 'lookup-name');
   head.append(node('strong', '', name));
   if (others > 0) head.append(node('span', 'more-count', `+${others}`));

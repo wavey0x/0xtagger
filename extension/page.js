@@ -8,6 +8,7 @@ import { checksumAddress } from './checksum.js';
 
 const ADDRESS = 'data-0xtagger-address';
 const TAG = 'data-0xtagger-tag';
+const CLIP = 'data-0xtagger-clip';
 // The address kept beside a name on the one display a page is about.
 const SHORT = 'data-0xtagger-short';
 // What our own button may never be put inside, whatever is being annotated.
@@ -176,6 +177,7 @@ export async function createPageController({
     for (const box of new Set([element, target.display])) {
       box?.removeAttribute(TAG);
       box?.removeAttribute(SHORT);
+      box?.removeAttribute(CLIP);
     }
     target.nameLine?.remove();
     element.removeAttribute(ADDRESS);
@@ -185,7 +187,7 @@ export async function createPageController({
   }
   function clear() {
     for (const element of targets.keys()) remove(element);
-    for (const line of doc.querySelectorAll('[data-0xtagger-name-line]')) line.remove();
+    for (const node of doc.querySelectorAll('[data-0xtagger-name-line],[data-0xtagger-edit]')) node.remove();
     editor?.updateVisibility();
   }
   function recordFor(target) {
@@ -218,7 +220,13 @@ export async function createPageController({
     }
     if (!target.editButton?.isConnected) addEditButton(target);
     const shown = shownOn(target);
-    if (shown !== target.element) { target.element.removeAttribute(TAG); target.element.removeAttribute(SHORT); }
+    if (shown !== target.element) {
+      target.element.removeAttribute(TAG); target.element.removeAttribute(SHORT); target.element.removeAttribute(CLIP);
+    }
+    const button = target.editButton.shadowRoot.querySelector('button');
+    button.title = tag ? `${tag}\nEdit tags` : 'Edit tags';
+    if (tag) button.setAttribute('aria-description', tag);
+    else button.removeAttribute('aria-description');
     if (tag) {
       const trailer = adapter.subject && target.element.matches(adapter.subject)
         ? abbreviate(checksumAddress(target.address)) : null;
@@ -228,11 +236,20 @@ export async function createPageController({
       if (trailer && !shown.style.getPropertyValue('--0xtagger-size')) {
         shown.style.setProperty('--0xtagger-size', win.getComputedStyle(shown).fontSize);
       }
+      const flow = shown.getAttribute(CLIP) ||
+        (win.getComputedStyle(shown).display.startsWith('inline') ? 'inline' : 'block');
       // Preserve native nodes and copy sources; CSS substitutes only their
       // visible glyphs with the shared custom-tag typography.
       if (shown.getAttribute(TAG) !== tag) shown.setAttribute(TAG, tag);
       if (trailer) { if (shown.getAttribute(SHORT) !== trailer) shown.setAttribute(SHORT, trailer); }
       else shown.removeAttribute(SHORT);
+      // Hiding native text also zeroes a clipping box's own ellipsis. Let the
+      // replacement text draw it at its normal size. An inline name clipped by
+      // an ancestor stays inline so that ancestor can trim through its text.
+      // Read after tagging: an adapter may constrain only annotated displays.
+      const clips = !trailer && ['hidden', 'clip'].includes(win.getComputedStyle(shown).overflowX);
+      if (clips) shown.setAttribute(CLIP, flow);
+      else shown.removeAttribute(CLIP);
       const description = `0xtagger: ${tag}`;
       if (!target.element.hasAttribute('aria-description') || target.description === target.element.getAttribute('aria-description')) {
         if (target.element.getAttribute('aria-description') !== description) target.element.setAttribute('aria-description', description);
@@ -241,6 +258,7 @@ export async function createPageController({
     } else {
       shown.removeAttribute(TAG);
       shown.removeAttribute(SHORT);
+      shown.removeAttribute(CLIP);
       if (target.description && target.element.getAttribute('aria-description') === target.description) target.element.removeAttribute('aria-description');
       target.description = null;
     }
@@ -263,6 +281,9 @@ export async function createPageController({
       display: displayBox(element, address), nameBefore: adapter.nameBefore?.(element) };
   }
   function scan(root) {
+    // Frameworks can clone our host but not its shadow button. An empty clone
+    // still takes space beside the name; only the live control should remain.
+    for (const slot of query(root, '[data-0xtagger-edit]')) if (!slot.shadowRoot) slot.remove();
     const claims = new Map();
     for (const item of adapter.scan(root, { document: doc, url: url() })) {
       const target = validate(item);

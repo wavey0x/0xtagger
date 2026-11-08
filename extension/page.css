@@ -9,10 +9,8 @@
 a[data-0xtagger-tag], code[data-0xtagger-tag] {
   display: inline-block;
 }
-/* The name is plain inline text. A box of its own would be atomic, and a site
-   that trims its own overflow cannot trim through one: it drops the box whole
-   and leaves its ellipsis standing where the name was. As text the site cuts it
-   off mid-word instead, which still reads. */
+/* Leave names inline when a native ancestor owns truncation. An atomic box
+   there can disappear whole rather than letting the ancestor trim the text. */
 [data-0xtagger-tag]::before {
   content: attr(data-0xtagger-tag);
   /* Fixed units on purpose: rem would resolve against the website's own root
@@ -20,7 +18,6 @@ a[data-0xtagger-tag], code[data-0xtagger-tag] {
   font: 700 14px/1.5 system-ui, sans-serif;
   letter-spacing: normal;
   text-transform: none;
-  /* A name belongs on one line wherever the site would have wrapped it. */
   white-space: nowrap;
   color: var(--0xtagger-accent);
   pointer-events: none;
@@ -39,13 +36,30 @@ a[data-0xtagger-tag], code[data-0xtagger-tag] {
 /* A name stands in for the address, so it is set in the type the address was
    set in. Everywhere else that is already 14px; on a page's own heading it is
    not, and a caption-sized name beside a heading reads as an afterthought.
-   The address trailer belongs to the name, so the two never break apart; being
-   plain text, the two sizes come to one baseline by themselves. */
+   A heading may wrap its name and move the address trailer onto the next line;
+   the abbreviated address itself always stays whole. */
 [data-0xtagger-short] {
-  white-space: nowrap;
+  white-space: normal;
 }
 [data-0xtagger-short]::before {
   font-size: var(--0xtagger-size, 14px);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+[data-0xtagger-short]::after {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+/* A display which clips its own text needs a nonzero-size ellipsis. Keep its
+   outer inline/block flow and give only the replacement text room to shrink. */
+[data-0xtagger-tag][data-0xtagger-clip] {
+  display: flex !important;
+  align-items: center;
+  min-width: 0;
+}
+[data-0xtagger-tag][data-0xtagger-clip="inline"] {
+  display: inline-flex !important;
 }
 
 /* A name line an adapter puts above an address that has no name of its own.
@@ -56,7 +70,8 @@ a[data-0xtagger-tag], code[data-0xtagger-tag] {
   min-width: 0;
   max-width: 100%;
 }
-[data-0xtagger-name-line]::before {
+[data-0xtagger-name-line]::before,
+[data-0xtagger-tag][data-0xtagger-clip]::before {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

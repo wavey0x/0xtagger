@@ -26,7 +26,7 @@ h2 { margin: 0; font-size: 16px; font-weight: 800; letter-spacing: -.3px; }
 /* A native tooltip waits about a second and arrives in the operating
    system's styling. This one shows on the first frame, and is placed
    against the viewport so a control at the edge of the popup still reads. */
-.tip { position: fixed; z-index: 2147483647; max-width: 220px; padding: 6px 8px; border: 1px solid var(--0xtagger-line); border-radius: 6px; font-size: 11px; font-weight: 600; line-height: 1.35; color: var(--0xtagger-ink); background: var(--0xtagger-panel); box-shadow: var(--0xtagger-shadow); pointer-events: none; }
+.tip { position: fixed; z-index: 2147483647; max-width: 220px; overflow-wrap: anywhere; padding: 6px 8px; border: 1px solid var(--0xtagger-line); border-radius: 6px; font-size: 11px; font-weight: 600; line-height: 1.35; color: var(--0xtagger-ink); background: var(--0xtagger-panel); box-shadow: var(--0xtagger-shadow); pointer-events: none; }
 label { display: block; margin-bottom: 4px; font-size: 11px; font-weight: 650; }
 /* Boxes people type in. A checkbox or radio is a glyph, not a field: given
    this width it stretches and shoves its own label across the row. */

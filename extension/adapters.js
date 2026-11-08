@@ -163,6 +163,11 @@ const etherscanAdapter = site({
     [data-truncate="address"][data-0xtagger-tag] {
       max-width: 171px;
     }
+    /* The private-name badge repeats the sender's tag. It returns when the
+       custom tag is hidden, leaving Etherscan's own control intact. */
+    .from-address-col:has(a[data-0xtagger-tag]) .badge:has(> .hash-tag[data-highlight-target]) {
+      display: none !important;
+    }
     #owner_container > li:has(> [data-0xtagger-edit]) {
       display: flex;
       align-items: center;
@@ -203,8 +208,17 @@ const etherscanAdapter = site({
     // wallets, under whatever the explorer already calls them.
     keeps: '.dropdown-item',
     // The innermost verified address widget owns the annotation.
-    skip: element => !element.matches('#mainaddress,[data-highlight-target]') &&
-      element.querySelector('[data-highlight-target],.hash-tag'),
+    skip: element => {
+      // seen: etherscan.io/tx/0x9f3c9115d0f085d39bfb296aec6c3cae1a448b388622cc8d7eb2da11f319c98a,
+      // 2026-11-07 — signed in with a private name for the sender. Etherscan
+      // places its name badge beside the address link. Both identify the same
+      // wallet, but the link is the address display our tag must replace.
+      const from = element.closest('.from-address-col');
+      const sender = from?.querySelector('a[data-highlight-target][href*="/address/"]');
+      if (sender && element !== sender) return true;
+      return !element.matches('#mainaddress,[data-highlight-target]') &&
+        element.querySelector('[data-highlight-target],.hash-tag');
+    },
     // ENS search rows resolve the domain beside its link; token holder rows
     // put the wallet in the link query and its native copy control.
     sources: (element, url) => element.matches(SEARCH_ROW)
@@ -303,6 +317,12 @@ const safeAdapter = site({
   // nobody could edit.
   styles: `${SAFE_NAME} > [data-0xtagger-tag] ~ :has(> svg):not(${UI}):not(:has(:is(p, div, b, strong, label))) {
       display: none !important;
+    }
+    /* seen: app.safe.global/transactions/queue?safe=eth:0x4444AAAACDBa5580282365e25b16309Bd770ce4a
+       — expand transaction 923, audit log — 2026-11-08. The timestamp leaves
+       an empty grid cell below it; let the signer use that space as well. */
+    [class*="actorRow"]:has([data-0xtagger-tag]) {
+      grid-column: 2 / -1;
     }`,
   rules: {
     targets: `a[href*="/address/"],[data-address],[title],[class*="addressContainer"] span,main span,${SAFE_NAME_BOX},${SAFE_SELECTOR},${SAFE_COPIES} [class*="actorText"]`,
@@ -370,6 +390,20 @@ const STYFI_ADDRESS = '#ranking-body > tr > td.account .address-line > a.address
 const styfiAdapter = site({
   id: 'stYFI',
   matches: url => url.hostname === 'styfi.wavey.info',
+  // seen: styfi.wavey.info/ — holder ranking at mobile width — 2026-11-08.
+  // The table fixes column widths but its address row permits overflow. A
+  // longer name must shrink within that column, leaving both controls usable.
+  styles: `#ranking-body .address-line:has(> [data-0xtagger-tag]) {
+      max-width: 100%;
+    }
+    ${STYFI_ADDRESS}[data-0xtagger-tag] {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    #ranking-body .address-line:has(> [data-0xtagger-tag]) > .copy-trigger {
+      flex-shrink: 0;
+    }`,
   probe({ document }) {
     if (document.readyState === 'loading') return { status: 'waiting' };
     if (!document.querySelector('main .ranking #ranking-body') ||

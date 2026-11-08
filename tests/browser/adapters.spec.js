@@ -105,6 +105,38 @@ for (const site of sites) {
   });
 }
 
+test('Etherscan replaces the sender address and leaves a redundant private badge hidden only while tagged', async ({ page }) => {
+  const sender = '0x1b5f15dcb82d25f91c65b53cee151e8b9fbdd271';
+  const saved = { ...record, address: sender, tags: ['Schlag deployer'] };
+  await start(page, { site: 'https://etherscan.io/tx/0x9f3c9115d0f085d39bfb296aec6c3cae1a448b388622cc8d7eb2da11f319c98a',
+    records: [saved],
+    html: `<header>Explorer</header><main><div class="from-address-col">
+      <div class="d-inline"><span class="d-inline"><a id="sender" data-highlight-value
+        data-highlight-target="${sender}" href="/address/${sender}"><span>${sender}</span></a></span>
+        <span id="badge" class="badge bg-light rounded-pill" style="max-width:10rem"><span id="private-name"
+          class="hash-tag text-truncate" style="max-width:10rem" data-highlight-target="${sender}"
+          data-bs-title="My Name Tag: Schlag deployer">Schlag deployer</span></span>
+        <a id="native-copy" class="js-clipboard" data-clipboard-text="${sender}" href="javascript:;">Copy Address</a>
+      </div></div></main>` });
+  await expect(page.locator('#sender')).toHaveAttribute('data-0xtagger-tag', 'Schlag deployer');
+  await expect(page.locator('#private-name')).not.toHaveAttribute('data-0xtagger-tag');
+  await expect(page.locator('#badge')).toBeHidden();
+  await expect(page.locator('.from-address-col [data-0xtagger-tag]')).toHaveCount(1);
+  await expect(page.locator('.from-address-col [data-0xtagger-edit]')).toHaveCount(1);
+  await expect(page.locator('#sender')).toHaveText(sender);
+  await expect(page.locator('#sender')).toHaveAttribute('href', `/address/${sender}`);
+  await expect(page.locator('#native-copy')).toHaveAttribute('data-clipboard-text', sender);
+  await page.evaluate(() => window.controller.updateState({ ...window.state,
+    stateRevision: window.state.stateRevision + 1, records: [] }));
+  await expect(page.locator('#badge')).toBeVisible();
+  await expect(page.locator('#sender')).not.toHaveAttribute('data-0xtagger-tag');
+  await page.evaluate(saved => window.controller.updateState({ ...window.state,
+    stateRevision: window.state.stateRevision + 2, records: [saved] }), saved);
+  await expect(page.locator('#sender')).toHaveAttribute('data-0xtagger-tag', 'Schlag deployer');
+  await expect(page.locator('#badge')).toBeHidden();
+  await expect(page.locator('.from-address-col [data-0xtagger-edit]')).toHaveCount(1);
+});
+
 test.describe('Etherscan explorer hosts', () => {
   for (const [host, chain] of [
     ['arbiscan.io', '42161'],
