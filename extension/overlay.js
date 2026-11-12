@@ -8,6 +8,10 @@ export async function createOverlay(doc, win) {
   host.setAttribute(UI_ATTRIBUTE, '');
   host.style.cssText = 'position:absolute;left:0;top:0;z-index:2147483647;pointer-events:none;';
   const shadow = host.attachShadow({ mode: 'open' });
+  // Editing belongs to this overlay, not a website's document-level outside
+  // click handler. Let inputs and buttons act normally before stopping the
+  // bubble; genuine clicks outside still reach both the editor and the site.
+  shadow.addEventListener('click', event => event.stopPropagation());
   await editorStyles(shadow);
   const box = doc.createElement('div');
   box.style.cssText = 'position:fixed;pointer-events:auto;display:none;';

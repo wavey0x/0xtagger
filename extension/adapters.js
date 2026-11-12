@@ -379,30 +379,61 @@ const safeAdapter = site({
   },
 });
 
-// The ranking renders two abbreviated labels for each address, one for narrow
-// screens. Neither label proves identity; the Ethereum explorer link and its
-// full-address title do, and must agree. Keep the copy button and membership
-// badges beside the link in the site's own hands.
-// seen: styfi.wavey.info/ — load the ranking, then search or sort Address;
-//       narrow the viewport to see the compact label — 2026-10-18.
-const STYFI_ADDRESS = '#ranking-body > tr > td.account .address-line > a.address-link';
+// seen: https://styfi.wavey.info/ — open a wallet, search an ENS name, then
+//       narrow the ranking — 2026-11-12. The name is now a details button;
+//       its explorer link is a separate sibling, including when hidden on mobile.
+const STYFI_ROW = '#ranking-body > tr';
+const STYFI_ADDRESS = `${STYFI_ROW} > td.account .address-line > button.address-link`;
+const STYFI_HEADING = '#wallet-panel:not([hidden]) > .drawer-head > #wallet-address';
+const STYFI_TARGETS = `${STYFI_ADDRESS},${STYFI_HEADING}`;
+const styfiIdentity = element => {
+  const address = parseAddress(element.getAttribute('title'));
+  const heading = element.matches(STYFI_HEADING);
+  const links = heading ? [element] : [...element.parentElement.querySelectorAll(':scope > a.explorer-link')];
+  const link = links.length === 1 && addressLink(links[0], element.baseURI);
+  if (!address || link?.network !== 'eip155:1' || link.address !== address) return false;
+  if (!heading && parseAddress(element.closest('tr')?.getAttribute('data-address')) !== address) return false;
+  // The two responsive labels coexist in the DOM. Check each abbreviation,
+  // including the hidden one, without joining them or mistaking ENS for proof.
+  const labels = heading ? [element] : [...element.querySelectorAll('.address-label,.address-label-compact')];
+  return labels.every(label => {
+    const text = label.textContent.trim().toLowerCase();
+    const full = parseAddress(text);
+    const fragment = text.match(/(?:^| · )(0x[0-9a-f]+)[.…]+([0-9a-f]+)$/);
+    return (!full || full === address) && (!fragment || address.startsWith(fragment[1]) && address.endsWith(fragment[2]));
+  });
+};
 
 const styfiAdapter = site({
   id: 'stYFI',
   matches: url => url.hostname === 'styfi.wavey.info',
-  // seen: styfi.wavey.info/ — holder ranking at mobile width — 2026-11-08.
-  // The table fixes column widths but its address row permits overflow. A
-  // longer name must shrink within that column, leaving both controls usable.
-  styles: `#ranking-body .address-line:has(> [data-0xtagger-tag]) {
-      max-width: 100%;
+  subject: STYFI_HEADING,
+  scanRoot: root => root.closest?.(`${STYFI_ROW},#wallet-panel`) || root,
+  watch: ['data-address'],
+  // The table sizes columns automatically. Bound a desktop name's intrinsic
+  // width; on mobile the wallet gets the space left by rank and voting power.
+  // The drawer heading may grow with a name, keeping its address and controls.
+  styles: `#ranking-body .address-line:has(> [data-0xtagger-address]) {
+      max-width: 240px;
     }
-    ${STYFI_ADDRESS}[data-0xtagger-tag] {
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    #ranking-body .address-line:has(> [data-0xtagger-tag]) > .copy-trigger {
+    #ranking-body .address-line:has(> [data-0xtagger-address]) > .address-faint {
       flex-shrink: 0;
+    }
+    #wallet-panel .drawer-head:has(> [data-0xtagger-tag]) {
+      height: auto;
+      min-height: 52px;
+      padding-block: 8px;
+      box-sizing: border-box;
+    }
+    #wallet-address[data-0xtagger-tag] {
+      flex: 1;
+    }
+    #wallet-panel .drawer-head:has(> [data-0xtagger-tag]) > #wallet-close {
+      flex-shrink: 0;
+    }
+    @media (max-width: 700px) {
+      #ranking-body td.account:has([data-0xtagger-address]) { width: 100%; max-width: 0; }
+      #ranking-body .address-line:has(> [data-0xtagger-address]) { max-width: 100%; }
     }`,
   probe({ document }) {
     if (document.readyState === 'loading') return { status: 'waiting' };
@@ -410,17 +441,18 @@ const styfiAdapter = site({
         !document.querySelector('thead [data-sort="address"]')) {
       return { status: 'stale', reason: 'styfi-ranking-missing' };
     }
+    const rows = query(document, STYFI_ROW);
+    if (rows.some(row => !row.querySelector('td.empty') && !row.querySelector(STYFI_ADDRESS))) {
+      return { status: 'stale', reason: 'styfi-wallet-display-changed' };
+    }
     return { status: 'ready', network: 'eip155:1' };
   },
   rules: {
-    targets: STYFI_ADDRESS,
+    targets: STYFI_TARGETS,
     attributes: ['title'],
-    anchors: STYFI_ADDRESS,
-    skip: element => {
-      const link = addressLink(element, element.baseURI);
-      const title = parseAddress(element.getAttribute('title'));
-      return link?.network !== 'eip155:1' || !title || link.address !== title;
-    },
+    anchors: STYFI_TARGETS,
+    allowed: STYFI_ADDRESS,
+    skip: element => !styfiIdentity(element),
   },
 });
 

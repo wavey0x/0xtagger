@@ -41,14 +41,5 @@ test('capture complete and constrained names across supported layouts', async ({
       <div class="line">Short <a class="hash-tag" href="/address/${address}">${address}</a></div></main>` });
     await expect(page.locator('[data-0xtagger-tag]')).toHaveCount(4);
     await capture(`tag-etherscan-${width}`);
-
-    await start(page, { site: 'https://styfi.wavey.info/', records, html: `${base}<style>
-      table{table-layout:fixed;width:100%;border-collapse:collapse}th,td{padding:8px 4px;text-align:left;border-bottom:1px solid #333}th:first-child{width:60%}
-      .address-line{display:inline-flex;align-items:center;white-space:nowrap}.address-link{font:13px monospace}.copy-trigger{display:inline-flex;width:18px;height:18px;padding:0;margin-left:3px;border:0;background:#888}
-      </style><header>stYFI · Holder ranking</header><main><div class="ranking"><table><thead><tr><th data-sort="address">Wallet</th><th>Balance</th></tr></thead><tbody id="ranking-body">
-      ${[address,other].map(at=>`<tr><td class="account"><span class="address-line"><a class="address-link" href="https://etherscan.io/address/${at}" title="${at}"><span>${at.slice(0,7)}…${at.slice(-5)}</span><span hidden>${at.slice(0,5)}…${at.slice(-4)}</span></a><button class="copy-trigger" aria-label="Copy address"></button></span></td><td>202.19</td></tr>`).join('')}
-      </tbody></table></div></main>` });
-    await expect(page.locator('[data-0xtagger-tag]')).toHaveCount(2);
-    await capture(`tag-styfi-${width}`);
   }
 });

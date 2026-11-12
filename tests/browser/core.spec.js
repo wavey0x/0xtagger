@@ -183,6 +183,24 @@ test('clicking away saves the draft and preserves native focus and copy actions'
   expect(await page.evaluate(() => window.saves.length)).toBe(1);
 });
 
+test('editor clicks do not reach native outside-click handlers, but website clicks still do', async ({ page }) => {
+  await start(page);
+  await page.evaluate(() => {
+    window.websiteClicks = 0;
+    document.addEventListener('click', () => { window.websiteClicks += 1; });
+  });
+  await edit(page).click();
+  await input(page).click();
+  await shownAddress(page).click();
+  await input(page).fill('Saved by leaving');
+  expect(await page.evaluate(() => window.websiteClicks)).toBe(0);
+  await page.locator('#native-input').click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await page.evaluate(() => window.websiteClicks)).toBe(1);
+  await expect(page.locator('#native-input')).toBeFocused();
+  expect(await page.evaluate(() => window.saves.at(-1))).toMatchObject({ address, tags: ['Saved by leaving', 'Operations'] });
+});
+
 test('the tag that opened the editor closes it, saving the draft; the close button saves too', async ({ page }) => {
   await start(page);
   await edit(page).click();
