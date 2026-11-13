@@ -34,10 +34,12 @@ test('capture stYFI ranking and drawer with short, long and ENS names', async ({
     await start(page, { site: 'https://styfi.wavey.info/', records,
       html: styfiPage(styfiRow(address) + styfiRow(other) + styfiRow(named, { name: 'treasury.eth' })) + styles });
     await expect(page.locator('#ranking-body [data-0xtagger-tag]')).toHaveCount(3);
-    await page.evaluate(at => window.openWallet(at), other);
-    await expect(page.locator('#wallet-address')).toHaveAttribute('data-0xtagger-tag', records[1].tags[0]);
-    const panel = await page.locator('#wallet-panel').boundingBox();
-    await page.screenshot({ path: `docs/images/tag-styfi-${theme}-${width}.png`, animations: 'disabled',
-      clip: { x: 0, y: 0, width, height: Math.ceil(panel.y + panel.height + 16) } });
+    for (const [wallet, tag, suffix] of [[other, records[1].tags[0], ''], [address, records[0].tags[0], '-short']]) {
+      await page.evaluate(at => window.openWallet(at), wallet);
+      await expect(page.locator('#wallet-address')).toHaveAttribute('data-0xtagger-tag', tag);
+      const panel = await page.locator('#wallet-panel').boundingBox();
+      await page.screenshot({ path: `docs/images/tag-styfi${suffix}-${theme}-${width}.png`, animations: 'disabled',
+        clip: { x: 0, y: 0, width, height: Math.ceil(panel.y + panel.height + 16) } });
+    }
   }
 });

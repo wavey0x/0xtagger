@@ -425,9 +425,6 @@ const styfiAdapter = site({
       padding-block: 8px;
       box-sizing: border-box;
     }
-    #wallet-address[data-0xtagger-tag] {
-      flex: 1;
-    }
     #wallet-panel .drawer-head:has(> [data-0xtagger-tag]) > #wallet-close {
       flex-shrink: 0;
     }
