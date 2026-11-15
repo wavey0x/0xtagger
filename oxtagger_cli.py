@@ -43,6 +43,7 @@ SOURCES = {
     "safe:address-book": "Safe's address book",
     "safe:page": "Safe",
     "etherscan:page": "Etherscan",
+    "styfi:page": "stYFI",
     "arkham:api": "Arkham",
     "agent": "Agent",
 }

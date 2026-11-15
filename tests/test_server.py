@@ -357,6 +357,21 @@ def test_a_source_a_record_cannot_carry_is_refused(book):
     assert put(book, ['Treasury'], source='evil.example').status_code == 422
 
 
+@pytest.mark.parametrize('method', ['put', 'batch', 'add'])
+def test_styfi_source_survives_writes_and_reads(book, method):
+    entry = {'address': ADDRESS, 'scope': 'global', 'tags': ['treasury.eth'], 'source': 'styfi:page'}
+    if method == 'put':
+        answer = put(book, entry['tags'], source=entry['source'])
+    elif method == 'batch':
+        answer = batch(book, [entry | {'version': None}])
+    else:
+        answer = book.post('/tags', json={'additions': [entry]})
+    assert answer.status_code == 200
+    record = book.get('/tags').json()['records'][0]
+    assert record['tags'] == ['treasury.eth']
+    assert record['source'] == 'styfi:page'
+
+
 def test_arkham_source_survives_a_batch_write(book):
     answer = batch(book, [{'address': ADDRESS, 'scope': 'eip155:1',
                            'tags': ['Gate Hot Wallet'], 'version': None,

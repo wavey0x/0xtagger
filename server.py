@@ -24,6 +24,8 @@ NETWORK = re.compile(r"eip155:([1-9][0-9]*)")
 MAX_TAGS = 32
 MAX_TAG_LENGTH = 80
 MAX_DESCRIPTION_LENGTH = 1024
+Source = Literal["safe:address-book", "safe:page", "etherscan:page", "styfi:page",
+                 "arkham:api", "agent"]
 WEB_ASSETS = {
     'book-web.js', 'book.js', 'book.css', 'ui.js', 'ui.css', 'colors.js', 'colors.css',
     'store.js', 'records.js', 'stores/server.js', 'shared.js', 'networks.js',
@@ -77,8 +79,7 @@ class TagWrite(BaseModel):
     # Where a record came from, as a kind rather than a host. Set when the
     # record is created and never rewritten: it describes history, not
     # permission, and it ranks no name above another.
-    source: Literal["safe:address-book", "safe:page", "etherscan:page", "arkham:api",
-                    "agent"] | None = None
+    source: Source | None = None
 
     @field_validator("tags")
     @classmethod
@@ -119,8 +120,7 @@ class TagAddition(BaseModel):
     address: str
     scope: str
     tags: list[str] = Field(min_length=1, max_length=MAX_TAGS)
-    source: Literal["safe:address-book", "safe:page", "etherscan:page", "arkham:api",
-                    "agent"] | None = None
+    source: Source | None = None
 
     @field_validator("tags")
     @classmethod

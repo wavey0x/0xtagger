@@ -432,11 +432,12 @@ def test_add_creates_a_chain_record_sourced_to_agent(book, capsys):
     assert 'created' in capsys.readouterr().out
 
 
-def test_agent_source_is_named_agent_in_lookup_output(capsys):
+@pytest.mark.parametrize('source,name', [('agent', 'Agent'), ('styfi:page', 'stYFI')])
+def test_lookup_names_the_source(capsys, source, name):
     cli.report([cli.entry({'address': ADDRESS, 'scope': 'eip155:1',
-                           'tags': ['Balancer Vault'], 'source': 'agent'})],
+                           'tags': ['Balancer Vault'], 'source': source})],
                'http://127.0.0.1:8712', False)
-    assert 'from Agent' in capsys.readouterr().out
+    assert f'from {name}' in capsys.readouterr().out
 
 
 def test_add_creates_only_global_records_when_asked(book):

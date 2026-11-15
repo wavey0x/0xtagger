@@ -83,6 +83,58 @@ test('stYFI keeps ENS text intact and uses Ethereum overrides in both displays',
   await expect(drawer(page)).toBeVisible();
 });
 
+for (const surface of ['ranking', 'heading', 'voter']) test(`stYFI offers the ENS name from its ${surface} only until the user saves a tag`, async ({ page }) => {
+  await start(page, { site, records: [], html: styfiPage(styfiRow(address, { name: 'treasury.eth' }), {
+    voters: styfiVoter(address, { name: 'treasury.eth' }),
+  }) });
+  if (surface === 'heading') await wallet(page).click();
+  if (surface === 'voter') await page.evaluate(() => window.openProposal());
+  const button = surface === 'ranking' ? rowEdit(page) : surface === 'heading' ? drawerEdit(page)
+    : page.locator('#proposal-list [data-0xtagger-edit]').getByRole('button');
+  await button.click();
+  await expect(input(page)).toHaveValue('treasury.eth');
+  await expect(page.getByRole('dialog').locator('.from')).toHaveText('(from stYFI)');
+  expect(await input(page).evaluate(field => [field.selectionStart, field.selectionEnd])).toEqual([0, 'treasury.eth'.length]);
+  await input(page).press('Escape');
+  expect(await page.evaluate(() => window.saves)).toEqual([]);
+  await button.click();
+  await submit(page);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await page.evaluate(() => window.saves.at(-1))).toMatchObject({ address, scope: 'global', tags: ['treasury.eth'], source: 'styfi:page' });
+  await button.click();
+  await expect(input(page)).toHaveValue('treasury.eth');
+  await expect(page.getByRole('dialog').locator('.from')).toHaveCount(0);
+});
+
+test('stYFI suggestions exclude address fragments and do not claim names the user rewrites', async ({ page }) => {
+  await open(page, styfiRow(address), []);
+  await rowEdit(page).click();
+  await expect(input(page)).toHaveValue('');
+  await input(page).press('Escape');
+  await wallet(page).click();
+  await drawerEdit(page).click();
+  await expect(input(page)).toHaveValue('');
+  await input(page).press('Escape');
+  await start(page, { site, records: [], html: styfiPage('', { voters: styfiVoter(address) }) });
+  await page.evaluate(() => window.openProposal());
+  const button = page.locator('#proposal-list [data-0xtagger-edit]').getByRole('button');
+  await button.click();
+  await expect(input(page)).toHaveValue('');
+  await input(page).press('Escape');
+  await page.locator('.vwho').evaluate(element => { element.textContent = 'treasury.eth'; element.classList.add('named'); });
+  await button.click();
+  await expect(input(page)).toHaveValue('treasury.eth');
+  await input(page).fill('My treasury');
+  await submit(page);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  const saved = await page.evaluate(() => window.saves.at(-1));
+  expect(saved.tags).toEqual(['My treasury']);
+  expect(saved.source).toBeUndefined();
+  await button.click();
+  await expect(input(page)).toHaveValue('My treasury');
+  await expect(page.getByRole('dialog')).not.toContainText('treasury.eth');
+});
+
 test('stYFI drawer works without a ranking match and leaves activity and votes untouched', async ({ page }) => {
   await open(page, '<tr><td class="empty" colspan="5">No address matches your search.</td></tr>');
   await page.evaluate(at => {

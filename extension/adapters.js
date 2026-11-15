@@ -415,6 +415,12 @@ const styfiIdentity = element => {
 const styfiAdapter = site({
   id: 'stYFI',
   matches: url => url.hostname === 'styfi.wavey.info',
+  source: 'styfi:page',
+  // Read one native label, not both responsive copies. The drawer appends an
+  // address to the ENS name; that address is evidence, not part of the name.
+  // seen: https://styfi.wavey.info/ — open a named voter and wallet — 2026-11-14.
+  names: element => (element.querySelector('.address-label') || element).textContent
+    .replace(/ · 0x[0-9a-f]+[.…]+[0-9a-f]+$/i, ''),
   subject: STYFI_HEADING,
   scanRoot: root => root.closest?.(`${STYFI_ROW},${STYFI_VOTE},#wallet-panel`) || root,
   watch: ['data-address', 'data-account', 'aria-busy', 'data-theme'],

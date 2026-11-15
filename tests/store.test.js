@@ -781,14 +781,17 @@ test('a record composed by hand carries no source, and an unknown source is refu
 });
 
 test('a source survives an export and the import that reads it back', async () => {
-  const { store } = harness();
-  await store.init();
-  await write(store, ['Treasury'], { source: 'safe:page' });
-  const exported = JSON.stringify({ records: store.state().records });
-  const second = harness();
-  await second.store.init();
-  await second.store.merge(readBookFile(exported).records);
-  assert.equal(second.store.state().records[0].source, 'safe:page');
+  for (const [source, name] of [['safe:page', 'Safe'], ['styfi:page', 'stYFI']]) {
+    const { store } = harness();
+    await store.init();
+    await write(store, ['Treasury'], { source });
+    const exported = JSON.stringify({ records: store.state().records });
+    const second = harness();
+    await second.store.init();
+    await second.store.merge(readBookFile(exported).records);
+    assert.equal(second.store.state().records[0].source, source);
+    assert.equal(sourceName(second.store.state().records[0].source), name);
+  }
 });
 
 test('Arkham provenance survives a book import and is named in the UI', async () => {
