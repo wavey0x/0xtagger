@@ -387,7 +387,7 @@ const STYFI_ADDRESS = `${STYFI_ROW} > td.account .address-line > button.address-
 const STYFI_HEADING = '#wallet-panel:not([hidden]) > .drawer-head > #wallet-address';
 // seen: https://styfi.wavey.info/ — open a proposal's voter list — 2026-11-14.
 //       A voter has data-account and a sibling address link; the transaction
-//       link belongs to a separate cell. Pool names describe voting roles.
+//       link belongs to a separate cell. Pools identify addresses the same way.
 const STYFI_VOTE = '#proposal-panel:not([hidden]) #proposal-list .vrow';
 const STYFI_VOTER = `${STYFI_VOTE} > .vwho-cell > .vwho`;
 const STYFI_TARGETS = `${STYFI_ADDRESS},${STYFI_HEADING},${STYFI_VOTER}`;
@@ -466,7 +466,6 @@ const styfiAdapter = site({
     targets: STYFI_TARGETS,
     anchors: STYFI_TARGETS,
     allowed: STYFI_ADDRESS,
-    keeps: `${STYFI_VOTER}.pool`,
     sources: element => [styfiAccount(element)],
     skip: element => !styfiIdentity(element),
   },

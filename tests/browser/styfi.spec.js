@@ -206,7 +206,7 @@ test('stYFI a proposal refresh keeps a failed draft attached to its original vot
   await expect(wallet(page)).toHaveAttribute('data-0xtagger-tag', 'Original voter draft');
 });
 
-test('stYFI proposal voters preserve names, pool roles, copy and transaction actions', async ({ page }) => {
+test('stYFI proposal voters and pools show tags while preserving native text and actions', async ({ page }) => {
   await start(page, { site, html: styfiPage(styfiRow(address), { voters:
     styfiVoter(address, { name: 'treasury.eth' }) + styfiVoter(other, { name: 'YBC pool', pool: true }) }),
     records: [record, { ...record, address: other, tags: ['Pool tag'] }] });
@@ -215,7 +215,7 @@ test('stYFI proposal voters preserve names, pool roles, copy and transaction act
   await expect(voter).toHaveAttribute('data-0xtagger-tag', 'Treasury');
   await expect(voter).toHaveText('treasury.eth');
   await expect(page.locator('.vwho.pool')).toHaveAttribute('data-0xtagger-address', other);
-  await expect(page.locator('.vwho.pool')).not.toHaveAttribute('data-0xtagger-tag');
+  await expect(page.locator('.vwho.pool')).toHaveAttribute('data-0xtagger-tag', 'Pool tag');
   await expect(page.locator('.vwho.pool')).toHaveText('YBC pool');
   await page.locator('#proposal-list .copy-trigger').first().click();
   expect(await page.evaluate(() => window.nativeCopied)).toBe(address);
@@ -226,6 +226,33 @@ test('stYFI proposal voters preserve names, pool roles, copy and transaction act
   await expect(page.locator('#proposal-list a[data-0xtagger-address]')).toHaveCount(0);
   await page.locator('#proposal-close').click();
   await expect(page.locator('#proposal-list [data-0xtagger-address]')).toHaveCount(0);
+});
+
+test('stYFI pool edits appear immediately, survive a refresh and restore native names when removed', async ({ page }) => {
+  const pools = [[address, 'stYFIx pool'], [other, 'YBC pool']];
+  const voters = pools.map(([wallet, name]) => styfiVoter(wallet, { name, pool: true })).join('');
+  await start(page, { site, html: styfiPage(styfiRow(address), { voters }), records: [] });
+  await page.evaluate(() => window.openProposal());
+  for (const [wallet, name] of pools) {
+    const row = page.locator(`#proposal-list [data-account="${wallet}"]`);
+    await row.locator('[data-0xtagger-edit]').getByRole('button').click();
+    await input(page).fill(name);
+    await submit(page);
+    await expect(row.locator('.vwho')).toHaveAttribute('data-0xtagger-tag', name);
+    expect(await page.evaluate(() => window.saves.at(-1))).toMatchObject({ address: wallet, scope: 'global', tags: [name] });
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+  }
+  await page.locator('.vlist').evaluate((list, html) => { list.innerHTML = html; }, voters);
+  for (const [wallet, name] of pools) {
+    const row = page.locator(`#proposal-list [data-account="${wallet}"]`);
+    await expect(row.locator('.vwho')).toHaveAttribute('data-0xtagger-tag', name);
+    await row.locator('[data-0xtagger-edit]').getByRole('button').click();
+    await page.getByRole('button', { name: 'Remove tag 1' }).click();
+    await submit(page);
+    await expect(row.locator('.vwho')).not.toHaveAttribute('data-0xtagger-tag');
+    await expect(row.locator('.vwho')).toHaveText(name);
+    expect(await page.evaluate(() => window.saves.at(-1))).toMatchObject({ address: wallet, tags: [] });
+  }
 });
 
 test('stYFI voter evidence must agree and is rescanned after changes or sorting', async ({ page }) => {

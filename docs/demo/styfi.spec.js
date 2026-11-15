@@ -30,16 +30,18 @@ const styles = `<style>
 test('capture stYFI ranking and drawer with short, long and ENS names', async ({ page }) => {
   await mkdir('docs/images', { recursive: true });
   const named = '0x' + 'ef'.repeat(20);
+  const pool = '0x' + '12'.repeat(20);
   const records = [{ ...record, tags: ['wavey deployer'] },
     { ...record, address: other, tags: ['Treasury operations '.repeat(4).trimEnd() + '!'] },
-    { ...record, address: named, tags: ['Named treasury'] }];
+    { ...record, address: named, tags: ['Named treasury'] },
+    { ...record, address: pool, tags: ['YBC pool'] }];
   for (const theme of ['dark', 'light']) for (const width of [390, 800]) {
     await page.setViewportSize({ width, height: 640 });
     await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
     await start(page, { site: 'https://styfi.wavey.info/', records,
       html: styfiPage(styfiRow(address) + styfiRow(other) + styfiRow(named, { name: 'treasury.eth' }), {
         voters: styfiVoter(address) + styfiVoter(other) + styfiVoter(named, { name: 'treasury.eth' }) +
-          styfiVoter(address, { name: 'YBC pool', pool: true }),
+          styfiVoter(pool, { name: 'YBC pool', pool: true }),
       }) + styles });
     await expect(page.locator('#ranking-body [data-0xtagger-tag]')).toHaveCount(3);
     for (const [wallet, tag, suffix] of [[other, records[1].tags[0], ''], [address, records[0].tags[0], '-short']]) {
@@ -50,7 +52,7 @@ test('capture stYFI ranking and drawer with short, long and ENS names', async ({
         clip: { x: 0, y: 0, width, height: Math.ceil(panel.y + panel.height + 16) } });
     }
     await page.evaluate(() => window.openProposal());
-    await expect(page.locator('#proposal-list [data-0xtagger-tag]')).toHaveCount(3);
+    await expect(page.locator('#proposal-list [data-0xtagger-tag]')).toHaveCount(4);
     for (const voterWidth of width === 390 ? [390, 320] : [width]) {
       await page.setViewportSize({ width: voterWidth, height: 640 });
       const panel = await page.locator('#proposal-panel').boundingBox();
