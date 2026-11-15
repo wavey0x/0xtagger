@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
-import { address, other, record, start, reported, input, submit, shownAddress } from './controller.js';
-import { styfiPage, styfiRow } from '../fixtures/styfi.js';
+import { address, other, record, start, reported, input, submit, shownAddress, contrast } from './controller.js';
+import { styfiPage, styfiRow, styfiVoter } from '../fixtures/styfi.js';
 
 const site = 'https://styfi.wavey.info/';
 const open = (page, rows = styfiRow(address), records = [record]) => start(page, { site, html: styfiPage(rows), records });
@@ -36,9 +36,8 @@ test('stYFI tags wallet buttons while preserving native opening, copying and exp
   await expect(page.locator('[data-0xtagger-edit]')).toHaveCount(2);
 });
 
-test('stYFI requires agreeing row, title and Ethereum link evidence, including hidden labels', async ({ page }) => {
-  await open(page, styfiRow(address, { title: other }) + styfiRow(address, { rowAddress: other }) +
-    styfiRow(address, { title: '' }) + styfiRow(address, { rowAddress: '' }) +
+test('stYFI requires agreeing row and Ethereum link evidence, including hidden labels', async ({ page }) => {
+  await open(page, styfiRow(address, { rowAddress: other }) + styfiRow(address, { rowAddress: '' }) +
     styfiRow(address, { href: `https://basescan.org/address/${address}` }) +
     styfiRow(address, { href: `/wallet/${address}` }) + styfiRow(address));
   await expect(page.locator('[data-0xtagger-address]')).toHaveCount(1);
@@ -146,10 +145,123 @@ test('stYFI a failed save survives a wallet switch without retargeting the draft
 });
 
 test('stYFI detects an unrecognized populated table but accepts loading and empty results', async ({ page }) => {
-  for (const message of ['Reading verified balances…', 'No address matches your search.', 'The verified holder data could not be loaded.']) {
+  for (const message of ['No address matches your search.', 'The verified holder data could not be loaded.']) {
     await open(page, `<tr><td class="empty" colspan="5">${message}</td></tr>`);
     expect(await reported(page)).toMatchObject({ status: 'ready' });
   }
   await open(page, `<tr><td class="account"><a class="address-link" href="https://etherscan.io/address/${address}" title="${address}">${address}</a></td></tr>`);
   await expect.poll(() => reported(page)).toMatchObject({ status: 'stale' });
+});
+
+test('stYFI identifies a deep-linked wallet during loading and recovers across view changes', async ({ page }) => {
+  await start(page, { site, html: styfiPage('<tr class="skeleton" aria-hidden="true"><td><span></span></td></tr>', { loading: true }) });
+  expect(await reported(page)).toMatchObject({ status: 'ready' });
+  await page.evaluate(at => window.openWallet(at), address);
+  await expect(heading(page)).toHaveAttribute('data-0xtagger-tag', 'Treasury');
+  await page.locator('#wallet-close').click();
+  await page.locator('[data-view="proposals"]').click();
+  await page.locator('#ranking-body').evaluate((body, html) => {
+    body.innerHTML = html;
+    body.removeAttribute('aria-busy');
+  }, styfiRow(address));
+  await expect(wallet(page)).not.toHaveAttribute('data-0xtagger-address');
+  await page.locator('[data-view="stakers"]').click();
+  await expect(wallet(page)).toHaveAttribute('data-0xtagger-tag', 'Treasury');
+  await page.locator('[data-view="proposals"]').click();
+  await expect(wallet(page)).not.toHaveAttribute('data-0xtagger-address');
+  expect(await reported(page)).toMatchObject({ status: 'ready' });
+});
+
+test('stYFI keeps tags readable after native theme changes', async ({ page }) => {
+  await start(page, { site, html: styfiPage(styfiRow(address)) +
+    '<style>html{background:#fafafa}:root[data-theme=dark]{background:#111212}</style>' });
+  await wallet(page).click();
+  for (const surface of ['dark', 'light']) {
+    await page.locator('#theme-toggle').click();
+    await expect(page.locator('html')).toHaveAttribute('data-0xtagger-surface', surface);
+    await drawerEdit(page).click();
+    await expect(drawer(page)).toBeVisible();
+    const [ink, background] = await heading(page).evaluate(element => [getComputedStyle(element, '::before').color,
+      getComputedStyle(document.documentElement).backgroundColor]);
+    expect(contrast(ink, background)).toBeGreaterThanOrEqual(4.5);
+    await input(page).press('Escape');
+  }
+});
+
+test('stYFI a proposal refresh keeps a failed draft attached to its original voter', async ({ page }) => {
+  await start(page, { site, html: styfiPage(styfiRow(address), { voters: styfiVoter(address) }) });
+  await page.evaluate(() => window.openProposal());
+  await page.locator('#proposal-list [data-0xtagger-edit]').getByRole('button').click();
+  await input(page).fill('Original voter draft');
+  await page.evaluate(() => { window.saveError = 'Offline'; });
+  await submit(page);
+  await expect(input(page)).toHaveValue('Original voter draft');
+  await page.locator('.vlist').evaluate((list, html) => { list.innerHTML = html; }, styfiVoter(other));
+  await expect(page.locator('#proposal-list .vwho')).toHaveAttribute('data-0xtagger-address', other);
+  expect((await shownAddress(page).textContent()).toLowerCase()).toBe(address);
+  await page.evaluate(() => { window.saveError = null; });
+  await submit(page);
+  expect(await page.evaluate(() => window.saves.at(-1))).toMatchObject({ address, tags: ['Original voter draft', 'Operations'] });
+  await expect(page.locator('#proposal-list .vwho')).not.toHaveAttribute('data-0xtagger-tag');
+  await expect(wallet(page)).toHaveAttribute('data-0xtagger-tag', 'Original voter draft');
+});
+
+test('stYFI proposal voters preserve names, pool roles, copy and transaction actions', async ({ page }) => {
+  await start(page, { site, html: styfiPage(styfiRow(address), { voters:
+    styfiVoter(address, { name: 'treasury.eth' }) + styfiVoter(other, { name: 'YBC pool', pool: true }) }),
+    records: [record, { ...record, address: other, tags: ['Pool tag'] }] });
+  await page.evaluate(() => window.openProposal());
+  const voter = page.locator('#proposal-list .vwho').first();
+  await expect(voter).toHaveAttribute('data-0xtagger-tag', 'Treasury');
+  await expect(voter).toHaveText('treasury.eth');
+  await expect(page.locator('.vwho.pool')).toHaveAttribute('data-0xtagger-address', other);
+  await expect(page.locator('.vwho.pool')).not.toHaveAttribute('data-0xtagger-tag');
+  await expect(page.locator('.vwho.pool')).toHaveText('YBC pool');
+  await page.locator('#proposal-list .copy-trigger').first().click();
+  expect(await page.evaluate(() => window.nativeCopied)).toBe(address);
+  await page.locator('#proposal-list .vwho-cell .explorer-link').first().click();
+  expect(await page.evaluate(() => window.nativeOpened)).toBe(`https://etherscan.io/address/${address}`);
+  await page.locator('#proposal-list .vwhen .explorer-link').first().click();
+  expect(await page.evaluate(() => window.nativeOpened)).toContain('https://etherscan.io/tx/');
+  await expect(page.locator('#proposal-list a[data-0xtagger-address]')).toHaveCount(0);
+  await page.locator('#proposal-close').click();
+  await expect(page.locator('#proposal-list [data-0xtagger-address]')).toHaveCount(0);
+});
+
+test('stYFI voter evidence must agree and is rescanned after changes or sorting', async ({ page }) => {
+  await start(page, { site, html: styfiPage(styfiRow(address), { voters:
+    styfiVoter(address, { rowAccount: other }) + styfiVoter(address, { rowAccount: '' }) +
+    styfiVoter(address, { href: `https://basescan.org/address/${address}` }) +
+    styfiVoter(address, { name: '0xcdcdc…dcdcd' }) + styfiVoter(address) }) });
+  await page.evaluate(() => window.openProposal());
+  const voter = page.locator('#proposal-list .vwho').last();
+  await expect(page.locator('#proposal-list [data-0xtagger-address]')).toHaveCount(1);
+  await voter.evaluate((element, at) => { element.closest('.vrow').dataset.account = at; }, other);
+  await expect(voter).not.toHaveAttribute('data-0xtagger-address');
+  await voter.evaluate((element, at) => { element.closest('.vrow').dataset.account = at; }, address);
+  await expect(voter).toHaveAttribute('data-0xtagger-tag', 'Treasury');
+  await page.locator('#proposal-list .vwho-cell > a').last().evaluate((element, at) => { element.href = `https://etherscan.io/address/${at}`; }, other);
+  await expect(voter).not.toHaveAttribute('data-0xtagger-address');
+  await page.locator('.vlist').evaluate((list, html) => { list.innerHTML = html; }, styfiVoter(other) + styfiVoter(address));
+  await expect(page.locator('#proposal-list [data-0xtagger-address]')).toHaveCount(2);
+  await expect(page.locator('#proposal-list .vwho').first()).toHaveAttribute('data-0xtagger-address', other);
+  await expect(voter).toHaveAttribute('data-0xtagger-tag', 'Treasury');
+});
+
+for (const panel of ['wallet', 'proposal']) test(`stYFI mobile ${panel} editing works over the inert page and saves the right wallet`, async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await start(page, { site, html: styfiPage(styfiRow(address), { voters: styfiVoter(address) }) });
+  if (panel === 'wallet') await wallet(page).click();
+  else await page.evaluate(() => window.openProposal());
+  await page.locator(`#${panel}-panel [data-0xtagger-edit]`).getByRole('button').click();
+  await input(page).fill('Mobile treasury');
+  await submit(page);
+  await expect(page.locator(`#${panel}-panel [data-0xtagger-tag]`)).toHaveAttribute('data-0xtagger-tag', 'Mobile treasury');
+  expect(await page.evaluate(() => window.saves.at(-1))).toMatchObject({ address, scope: 'global' });
+  await page.locator(`#${panel}-panel [data-0xtagger-edit]`).getByRole('button').click();
+  await input(page).press('Escape');
+  await expect(page.locator(`#${panel}-panel`)).toBeVisible();
+  await page.locator(`#${panel}-close`).click();
+  await wallet(page).click();
+  await expect(heading(page)).toHaveAttribute('data-0xtagger-tag', 'Mobile treasury');
 });

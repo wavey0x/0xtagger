@@ -379,24 +379,32 @@ const safeAdapter = site({
   },
 });
 
-// seen: https://styfi.wavey.info/ — open a wallet, search an ENS name, then
-//       narrow the ranking — 2026-11-12. The name is now a details button;
-//       its explorer link is a separate sibling, including when hidden on mobile.
+// seen: https://styfi.wavey.info/#stakers — open a wallet and search an ENS
+//       name — 2026-11-14. Titles are gone. Ranking buttons are identified by
+//       their row and sibling Ethereum link; the drawer heading has its own link.
 const STYFI_ROW = '#ranking-body > tr';
 const STYFI_ADDRESS = `${STYFI_ROW} > td.account .address-line > button.address-link`;
 const STYFI_HEADING = '#wallet-panel:not([hidden]) > .drawer-head > #wallet-address';
-const STYFI_TARGETS = `${STYFI_ADDRESS},${STYFI_HEADING}`;
+// seen: https://styfi.wavey.info/ — open a proposal's voter list — 2026-11-14.
+//       A voter has data-account and a sibling address link; the transaction
+//       link belongs to a separate cell. Pool names describe voting roles.
+const STYFI_VOTE = '#proposal-panel:not([hidden]) #proposal-list .vrow';
+const STYFI_VOTER = `${STYFI_VOTE} > .vwho-cell > .vwho`;
+const STYFI_TARGETS = `${STYFI_ADDRESS},${STYFI_HEADING},${STYFI_VOTER}`;
+const styfiAccount = element => parseAddress(element.closest(STYFI_ROW)?.dataset.address ||
+  element.closest(STYFI_VOTE)?.dataset.account);
 const styfiIdentity = element => {
-  const address = parseAddress(element.getAttribute('title'));
   const heading = element.matches(STYFI_HEADING);
   const links = heading ? [element] : [...element.parentElement.querySelectorAll(':scope > a.explorer-link')];
   const link = links.length === 1 && addressLink(links[0], element.baseURI);
-  if (!address || link?.network !== 'eip155:1' || link.address !== address) return false;
-  if (!heading && parseAddress(element.closest('tr')?.getAttribute('data-address')) !== address) return false;
+  if (link?.network !== 'eip155:1') return false;
+  const address = link.address;
+  if (!heading && styfiAccount(element) !== address) return false;
   // The two responsive labels coexist in the DOM. Check each abbreviation,
   // including the hidden one, without joining them or mistaking ENS for proof.
-  const labels = heading ? [element] : [...element.querySelectorAll('.address-label,.address-label-compact')];
-  return labels.every(label => {
+  const labels = element.matches(STYFI_ADDRESS)
+    ? [...element.parentElement.querySelectorAll('.address-label,.address-label-compact,.address-faint')] : [element];
+  return labels.length > 0 && labels.every(label => {
     const text = label.textContent.trim().toLowerCase();
     const full = parseAddress(text);
     const fragment = text.match(/(?:^| · )(0x[0-9a-f]+)[.…]+([0-9a-f]+)$/);
@@ -408,8 +416,8 @@ const styfiAdapter = site({
   id: 'stYFI',
   matches: url => url.hostname === 'styfi.wavey.info',
   subject: STYFI_HEADING,
-  scanRoot: root => root.closest?.(`${STYFI_ROW},#wallet-panel`) || root,
-  watch: ['data-address'],
+  scanRoot: root => root.closest?.(`${STYFI_ROW},${STYFI_VOTE},#wallet-panel`) || root,
+  watch: ['data-address', 'data-account', 'aria-busy', 'data-theme'],
   // The table sizes columns automatically. Bound a desktop name's intrinsic
   // width; on mobile the wallet gets the space left by rank and voting power.
   // The drawer heading may grow with a name, keeping its address and controls.
@@ -431,24 +439,35 @@ const styfiAdapter = site({
     @media (max-width: 700px) {
       #ranking-body td.account:has([data-0xtagger-address]) { width: 100%; max-width: 0; }
       #ranking-body .address-line:has(> [data-0xtagger-address]) { max-width: 100%; }
+      /* The native 52px vote bar is fixed. Let it shrink before the voter name
+         and its three controls run out of room on a narrow phone. */
+      #proposal-list:has([data-0xtagger-address]) :is(.vhead, .vrow) {
+        grid-template-columns: minmax(120px, 1fr) minmax(0, 52px) 70px 60px;
+      }
     }`,
   probe({ document }) {
     if (document.readyState === 'loading') return { status: 'waiting' };
-    if (!document.querySelector('main .ranking #ranking-body') ||
+    const ranking = document.querySelector('main .ranking #ranking-body');
+    if (!ranking ||
         !document.querySelector('thead [data-sort="address"]')) {
       return { status: 'stale', reason: 'styfi-ranking-missing' };
     }
     const rows = query(document, STYFI_ROW);
-    if (rows.some(row => !row.querySelector('td.empty') && !row.querySelector(STYFI_ADDRESS))) {
+    // seen: https://styfi.wavey.info/ — initial load — 2026-11-14. The hidden
+    // Stakers tab starts with skeleton rows and aria-busy, not an empty message.
+    // A deep-linked wallet can already be identified while that request loads.
+    if (ranking.getAttribute('aria-busy') !== 'true' &&
+        rows.some(row => !row.querySelector('td.empty') && !row.querySelector(STYFI_ADDRESS))) {
       return { status: 'stale', reason: 'styfi-wallet-display-changed' };
     }
     return { status: 'ready', network: 'eip155:1' };
   },
   rules: {
     targets: STYFI_TARGETS,
-    attributes: ['title'],
     anchors: STYFI_TARGETS,
     allowed: STYFI_ADDRESS,
+    keeps: `${STYFI_VOTER}.pool`,
+    sources: element => [styfiAccount(element)],
     skip: element => !styfiIdentity(element),
   },
 });
